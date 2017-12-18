@@ -1,4 +1,6 @@
 
+#include "DEBUG.h"
+
 #include "RNG.h"
 #include "rngs.h"
 #include "rvgs.h"
@@ -13,6 +15,7 @@ RNG::RNG(RNG::type typ, double* params):
     // if this is the first RNG created ever, initialize the rng library
     if(counter==1)
         PlantSeeds(RNG::seed);
+    //DD(fprintf(stderr,"params: %lf\n",params[0]));
 }
 
 double RNG::gen(){
@@ -23,8 +26,7 @@ double RNG::gen(){
         return Exponential(params[0]);
         break;
     case HYPEXP:
-        cout << "TODO\n";
-        return 0;
+        return Hyperexponential(params[0],params[1],params[2]);
         break;
     case INST:
         return 0;

@@ -83,31 +83,33 @@ void ServerStation::serve(Event& ev){
 }
 
 Event ServerStation::processDeparture(Event& ev){
+    notify();
     // someone is leaving! update internal numbers
     N--;
     nout++;
 
     // since a job is leaving, there is free space for dequeueing
     if(N > 0){
-        DR("*****BEFORE: dequeue the event:");
-        DD(ev.dump());
         // dequeue
-        Event ev = Q->dequeue();
+        Event dev = Q->dequeue();
+        DR("*****BEFORE: dequeue the event:");
+        DD(dev.dump());
         // serve
-        serve(ev);
+        serve(dev);
         // reroute
-        reroute(ev);
+        reroute(dev);
         DR("*****dequeued job rerouted as:");
-        DD(ev.dump());
+        DD(dev.dump());
         // recast
-        return ev;
+        return dev;
     } else {
         DR("***nothing to dequeue:");
         return Event(); // Null event. Equivalent to returning nullptr
     }
 }
 
-Station::processOutcome ServerStation::processArrival(Event& ev){
+Event ServerStation::processArrival(Event& ev){
+    notify();
     // someone has arrived! update internal numbers
     N++;
     nin++;
@@ -118,11 +120,11 @@ Station::processOutcome ServerStation::processArrival(Event& ev){
         reroute(ev);
         DR("***job rerouted as:");
         DD(ev.dump());
-        return Station::RECAST;
+        return ev;
     } else {
         Q->enqueue(ev);
         DR("***job enqueued");
-        return Station::ENQUEUED;
+        return Event();
     }
 }
 
@@ -147,6 +149,7 @@ double DelayStation::generateTime(){
 }
 
 Event DelayStation::processDeparture(Event& ev){
+    notify();
     // someone is leaving! update internal numbers
     N--;
     nout++;
@@ -156,7 +159,8 @@ Event DelayStation::processDeparture(Event& ev){
     return Event(); // Null event. Equivalent to returning nullptr
 }
 
-Station::processOutcome DelayStation::processArrival(Event& ev){
+Event DelayStation::processArrival(Event& ev){
+    notify();
     // someone has arrived! update internal numbers
     N++;
     nin++;
@@ -169,17 +173,191 @@ Station::processOutcome DelayStation::processArrival(Event& ev){
     DD(ev.dump());
 
     // always recast
-    return Station::RECAST;
+    return ev;
 }
 
 
 // --- MPD station ---
-MPD::MPD(int N, int index, RNG::type ST, double* params, int mpd) :
-    ServerStation(N,index,ST,params), MultiProgrammingDegree(mpd){
+MPD::MPD(int N, int index, int mpd) :
+    ServerStation(N,index,RNG::INST,nullptr), MultiProgrammingDegree(mpd),
+    underControl(){
+}
+
+Event MPD::processDeparture(Event& ev){
+    notify();
+    // someone is leaving! update internal numbers
+    N--;
+    nout++;
+
+    // you can dequeue and reroute a job
+    // (if there is any, and if there is empty space)
+    if(N>0 && populosity()<MultiProgrammingDegree){
+        Event dev = Q->dequeue();
+        DR("*****BEFORE: dequeue the event:");
+        DD(dev.dump());
+        // serve
+        serve(dev);
+        // reroute
+        reroute(dev);
+        DR("*****dequeued job rerouted as:");
+        DD(dev.dump());
+        return dev;
+    } else {
+        // else return nothing
+        return Event();
+    }
+}
+
+Event MPD::processArrival(Event& ev){
+    notify();
+    // someone has arrived! update internal numbers
+    N++;
+    nin++;
+
+    // if the part of the system under control has space, recast immediately
+    if(populosity() < MultiProgrammingDegree){
+        serve(ev);
+        reroute(ev);
+
+        DR("***job rerouted as:");
+        DD(ev.dump());
+        return ev;
+    } else {
+        // else, enqueue the job
+        Q->enqueue(ev);
+
+        DR("***job stopped by MPD and enqueued");
+        return Event();  // return nothing
+    }
+}
+
+int MPD::populosity(){
+    typedef std::set<Station*>::iterator ssi;
+    int sum = 0;
+    for (ssi it = underControl.begin(); it != underControl.end(); ++it){
+        sum += (*it)->N;
+    }
+    DD(fprintf(stderr,"Populosity in active system: %d\n",sum));
+    return sum;
+}
+
+void MPD::watch(Station* S){
+    Observer::watch(static_cast<Subject*>(S));
+    underControl.insert(S);
+}
+
+void MPD::update(){
+    /// TODO
+    int i = populosity();
 }
 
 // --- SliceStation (CPU) ---
 SliceStation::SliceStation(int N, int index, RNG::type ST, double* params, double quantum) :
-    ServerStation(N,index,ST,params), quantum(quantum){
+    ServerStation(N,index,ST,params), quantum(quantum), slicedJobs(){
+}
+
+Event SliceStation::processDeparture(Event& ev){
+    notify();
+    // someone is leaving! update internal numbers
+    N--;
+    nout++;
+
+    // since a job is leaving, there is free space for dequeueing
+    // process another event
+    if(N > 0){
+        // dequeue
+        Event dev = Q->dequeue();
+        DR("*****dequeue the event:");
+        DD(dev.dump());
+        // serve (either assign S to new event,
+        // or subtract quantum to sliced event which is here again)
+        serve(dev);
+        // reroute
+        if(dev.permanence_time > quantum){
+            // if there is still work to do, this event will be sliced
+            sendBack(dev); // Change this event: from this -> to this
+
+            // register it as sliced
+            slicedJobs.insert(dev.name);
+
+            DR("*****dequeued job and sent back as:");
+            DD(dev.dump());
+        } else {
+            // if you can finish the work, send the completed job out
+            reroute(dev);
+            // the job is not sliced anymore
+            slicedJobs.erase(dev.name);
+
+            DR("*****dequeued job and rerouted as:");
+            DD(dev.dump());
+        }
+        // expose the sent-back or rerouted event
+        return dev;
+    } else {
+        // else, that job was the only one
+        DR("***nothing to dequeue:");
+        return Event(); // Null event. Equivalent to returning nullptr
+    }
+}
+
+Event SliceStation::processArrival(Event& ev){
+    notify();
+    // someone has arrived! update internal numbers
+    N++;
+    nin++;
+
+    // process the job
+    if(N==1){
+        // serve (either assign S to new event,
+        // or subtract quantum to sliced event which is here again)
+        serve(ev);
+        // reroute
+        if(ev.permanence_time > quantum){
+            // if there is still work to do, this event will be sliced
+            sendBack(ev); // Change this event: from this -> to this
+
+            // register it as sliced
+            slicedJobs.insert(ev.name);
+
+            DR("***job sent back as:");
+            DD(ev.dump());
+        } else {
+            // if you can finish the work, send the completed job out
+            reroute(ev);
+            // the job is not sliced anymore
+            slicedJobs.erase(ev.name);
+
+            DR("***job and rerouted as:");
+            DD(ev.dump());
+        }
+        // expose the sent-back or rerouted event
+        return ev;
+    } else {
+        Q->enqueue(ev);
+        DR("***job enqueued");
+        DD(ev.dump());
+
+        return Event();
+    }
+}
+
+void SliceStation::serve(Event& ev){
+    if(slicedJobs.find(ev.name) == slicedJobs.end()){
+        // if this is a fresh new job, serve
+        ev.permanence_time = generateTime();
+        DD(fprintf(stderr,"*****new service assigned: %lf\n",ev.permanence_time));
+    } else {
+        // if instead this job was already postponed, do nothing
+    }
+}
+
+void SliceStation::sendBack(Event& ev){
+    // reroute back the job to the SliceStation
+    ev.from = this;
+    ev.to = this;
+    // DOES NOT MODIFY arrived_at
+    ev.permanence_time -= quantum;
+    DR("*****job sliced:");
+    ev.leaving_at = clocktime + quantum; // only a quantum of time has passed
 }
 

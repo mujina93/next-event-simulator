@@ -1,6 +1,6 @@
 /* $Id: rvgs.c 55 2005-09-13 22:29:52Z asminer $ */
-/* -------------------------------------------------------------------------- 
- * This is an ANSI C library for generating random variates from six discrete 
+/* --------------------------------------------------------------------------
+ * This is an ANSI C library for generating random variates from six discrete
  * distributions
  *
  *      Generator         Range (x)     Mean         Variance
@@ -11,16 +11,18 @@
  *      Geometric(p)      x = 0,...     p/(1-p)      p/((1-p)*(1-p))
  *      Pascal(n, p)      x = 0,...     n*p/(1-p)    n*p/((1-p)*(1-p))
  *      Poisson(m)        x = 0,...     m            m
- * 
+ *
  * and seven continuous distributions
  *
- *      Uniform(a, b)     a < x < b     (a + b)/2    (b - a)*(b - a)/12 
+ *      Uniform(a, b)     a < x < b     (a + b)/2    (b - a)*(b - a)/12
  *      Exponential(m)    x > 0         m            m*m
  *      Erlang(n, b)      x > 0         n*b          n*b*b
  *      Normal(m, s)      all x         m            s*s
  *      Lognormal(a, b)   x > 0            see below
- *      Chisquare(n)      x > 0         n            2*n 
+ *      Chisquare(n)      x > 0         n            2*n
  *      Student(n)        all x         0  (n > 1)   n/(n - 2)   (n > 2)
+ *      Hyperexponential(
+ *    alpha, m1, m2) 0<alpha<1, m1,m2>0 ---          ---
  *
  * For the a Lognormal(a, b) random variable, the mean and variance are
  *
@@ -41,21 +43,21 @@
 
    long Bernoulli(double p)
 /* ========================================================
- * Returns 1 with probability p or 0 with probability 1 - p. 
- * NOTE: use 0.0 < p < 1.0                                   
+ * Returns 1 with probability p or 0 with probability 1 - p.
+ * NOTE: use 0.0 < p < 1.0
  * ========================================================
- */ 
+ */
 {
   return ((Random() < (1.0 - p)) ? 0 : 1);
 }
 
    long Binomial(long n, double p)
-/* ================================================================ 
- * Returns a binomial distributed integer between 0 and n inclusive. 
+/* ================================================================
+ * Returns a binomial distributed integer between 0 and n inclusive.
  * NOTE: use n > 0 and 0.0 < p < 1.0
  * ================================================================
  */
-{ 
+{
   long i, x = 0;
 
   for (i = 0; i < n; i++)
@@ -65,7 +67,7 @@
 
    long Equilikely(long a, long b)
 /* ===================================================================
- * Returns an equilikely distributed integer between a and b inclusive. 
+ * Returns an equilikely distributed integer between a and b inclusive.
  * NOTE: use a < b
  * ===================================================================
  */
@@ -84,12 +86,12 @@
 }
 
    long Pascal(long n, double p)
-/* ================================================= 
- * Returns a Pascal distributed non-negative integer. 
+/* =================================================
+ * Returns a Pascal distributed non-negative integer.
  * NOTE: use n > 0 and 0.0 < p < 1.0
  * =================================================
  */
-{ 
+{
   long i, x = 0;
 
   for (i = 0; i < n; i++)
@@ -98,12 +100,12 @@
 }
 
    long Poisson(double m)
-/* ================================================== 
- * Returns a Poisson distributed non-negative integer. 
+/* ==================================================
+ * Returns a Poisson distributed non-negative integer.
  * NOTE: use m > 0
  * ==================================================
  */
-{ 
+{
   double t = 0.0;
   long   x = 0;
 
@@ -115,18 +117,18 @@
 }
 
    double Uniform(double a, double b)
-/* =========================================================== 
- * Returns a uniformly distributed real number between a and b. 
+/* ===========================================================
+ * Returns a uniformly distributed real number between a and b.
  * NOTE: use a < b
  * ===========================================================
  */
-{ 
+{
   return (a + (b - a) * Random());
 }
 
    double Exponential(double m)
 /* =========================================================
- * Returns an exponentially distributed positive real number. 
+ * Returns an exponentially distributed positive real number.
  * NOTE: use m > 0.0
  * =========================================================
  */
@@ -135,16 +137,16 @@
 }
 
    double Erlang(long n, double b)
-/* ================================================== 
+/* ==================================================
  * Returns an Erlang distributed positive real number.
  * NOTE: use n > 0 and b > 0.0
  * ==================================================
  */
-{ 
+{
   long   i;
   double x = 0.0;
 
-  for (i = 0; i < n; i++) 
+  for (i = 0; i < n; i++)
     x += Exponential(b);
   return (x);
 }
@@ -154,11 +156,11 @@
  * Returns a normal (Gaussian) distributed real number.
  * NOTE: use s > 0.0
  *
- * Uses a very accurate approximation of the normal idf due to Odeh & Evans, 
+ * Uses a very accurate approximation of the normal idf due to Odeh & Evans,
  * J. Applied Statistics, 1974, vol 23, pp 96-97.
  * ========================================================================
  */
-{ 
+{
   const double p0 = 0.322232431088;     const double q0 = 0.099348462606;
   const double p1 = 1.0;                const double q1 = 0.588581570495;
   const double p2 = 0.342242088547;     const double q2 = 0.531103462366;
@@ -181,8 +183,8 @@
 }
 
    double Lognormal(double a, double b)
-/* ==================================================== 
- * Returns a lognormal distributed positive real number. 
+/* ====================================================
+ * Returns a lognormal distributed positive real number.
  * NOTE: use b > 0.0
  * ====================================================
  */
@@ -192,11 +194,11 @@
 
    double Chisquare(long n)
 /* =====================================================
- * Returns a chi-square distributed positive real number. 
+ * Returns a chi-square distributed positive real number.
  * NOTE: use n > 0
  * =====================================================
  */
-{ 
+{
   long   i;
   double z, x = 0.0;
 
@@ -208,12 +210,27 @@
 }
 
    double Student(long n)
-/* =========================================== 
+/* ===========================================
  * Returns a student-t distributed real number.
  * NOTE: use n > 0
  * ===========================================
  */
 {
   return (Normal(0.0, 1.0) / sqrt(Chisquare(n) / n));
+}
+
+   double Hyperexponential(double alpha, double m1, double m2)
+/* =========================================================
+ * Returns a hyperexponentially distributed positive real number.
+ * NOTE: use 0 <= alpha <= 1, m1 > 0, m2 > 0
+ * =========================================================
+ */
+{
+  double u = Uniform(0,1);
+  if (u < alpha){
+    return Exponential(m1);
+  } else {
+    return Exponential(m2);
+  }
 }
 
