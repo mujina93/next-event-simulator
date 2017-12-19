@@ -13,8 +13,9 @@
 using std::set;
 using std::string;
 using std::map;
+class System;
 
-class Station : public Subject{
+class Station{
 public:
     enum processOutcome {RECAST, ENQUEUED};
 
@@ -70,10 +71,11 @@ public:
     int MultiProgrammingDegree; // maximum number of clients in the system under control
     set<Station*> underControl; // part of the system under control
 
-    void watch(Station* S); // original one is watch(Subject* S)
-    void update() override;
+    void watch(System* Sys); // watch a system for notifications. overLOAD: original one is watch(Subject* S)
+    void update() override;  // do things when notified by the watched system
     Event processDeparture(Event& ev) override;
     Event processArrival(Event& ev) override;
+    void addUnderControl(Station* S); // adds a station under control
     int populosity(); // counts the number of clients in the part of the system under control
 };
 

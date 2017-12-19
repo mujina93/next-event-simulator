@@ -20,19 +20,24 @@ RNG::RNG(RNG::type typ, double* params):
 
 double RNG::gen(){
     SelectStream(streamIndex);
+    double e;
+    double u;
     switch (typ)
     {
     case EXP:
-        return Exponential(params[0]);
+        e = Exponential(params[0]);
+        return e;
         break;
     case HYPEXP:
-        return Hyperexponential(params[0],params[1],params[2]);
+        e = Hyperexponential(params[0],params[1],params[2]);
+        return e;
         break;
     case INST:
         return 0;
         break;
     case UNI:
-        return Uniform(0,1);
+        u = Uniform(0,1);
+        return u;
         break;
     default:
         cout << "Something went wrong with RNG ";

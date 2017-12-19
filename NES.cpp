@@ -80,7 +80,8 @@ System* initialize(){
     params[0] = 0.8;    // alpha
     params[1] = 15;     // mu1
     params[2] = 75;     // mu2
-    Station* CPU = new SliceStation(0, 3, RNG::HYPEXP, params, 3);
+    /// CHANGE SLICING
+    Station* CPU = new SliceStation(0, 3, RNG::HYPEXP, params, 20); ///CHANGE
     stations.push_back(CPU);
     // staz 4 - IO
     params = new double[1]; params[0] = 40;
@@ -90,13 +91,6 @@ System* initialize(){
     params = new double[1]; params[0] = 180;
     Station* IO2 = new ServerStation(0, 5, RNG::EXP, params);
     stations.push_back(IO2);
-
-    // add stations for MPD to watch (MPD pointer needed for polimorphism)
-    MPD* MPDreserve = static_cast<MPD*>(reserve);
-    MPDreserve->watch(swapin);
-    MPDreserve->watch(CPU);
-    MPDreserve->watch(IO1);
-    MPDreserve->watch(IO2);
 
     // glue stations together - set routes
     map<Station*,double> routes;
@@ -111,8 +105,9 @@ System* initialize(){
     swapin->setRoutes(routes);
     // from CPU (3)
     routes.clear();
-    routes[IO1] = 0.65; routes[IO2] = 0.25;
-    routes[delay] = 0.1*0.4; routes[reserve] = 0.1*0.6;
+//    routes[IO1] = 0.65; routes[IO2] = 0.25;
+//    routes[delay] = 0.1*0.4; routes[reserve] = 0.1*0.6;
+    routes[delay] = 0.5; routes[reserve] = 0.5; /// CHANGE
     CPU->setRoutes(routes);
     // from IO1 (4)
     routes.clear(); routes[CPU] = 1;
@@ -124,6 +119,14 @@ System* initialize(){
     // build and return the system object
     // the Future Event List is created inside the System
     System* mysys = new System(stations, 100000);
+
+    // add system for MPD to watch
+    MPD* MPDreserve = static_cast<MPD*>(reserve); //(MPD pointer needed for polymorphism)
+    MPDreserve->watch(mysys);
+    // add stations to be checked by MPD
+    MPDreserve->addUnderControl(CPU);
+    MPDreserve->addUnderControl(IO1);
+    MPDreserve->addUnderControl(IO2);
 
     delete params;
     return mysys;

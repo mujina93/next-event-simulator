@@ -48,10 +48,10 @@ bool System::engine(){
         // the job is leaving StazFrom => so it frees up space for a
         // dequeue (if there are pending jobs in StazFrom)
         Station* StazFrom = pop_ev.from;
-        DD(fprintf(stderr,"***Station %d here: ",StazFrom->index));
+        DD(fprintf(stderr,"DEP) Staton %d: ",StazFrom->index));
         Event dequeued = StazFrom->processDeparture(pop_ev);
         if( !dequeued.isNull() ){
-            FEL.schedule(dequeued);
+            schedule(dequeued);
         } else {
             // processDeparture returned no useful event. Nothing to do
         }
@@ -59,30 +59,38 @@ bool System::engine(){
         // the job arrives to StazTo. StazTo processes now the event
         // it can serve and recast it, or it can enqueue it.
         Station* StazTo = pop_ev.to;
-        DD(fprintf(stderr,"***Station %d here: ",StazTo->index));
+        DD(fprintf(stderr,"ARR) Station %d: ",StazTo->index));
         Event new_ev = StazTo->processArrival(pop_ev);
         if( !new_ev.isNull() ){
             // A new event was cast. Insert into FEL
-            FEL.schedule(pop_ev);
+            schedule(pop_ev);
         } else {
             // pop_ev was enqueued. Nothing to do.
         }
 
+        // notify the Observers (if any)
+        // (in our case, notify the MPD station that could want
+        // to dequeue and recast and schedule immediately a job)
+        notify();
+
         // the simulation has started. Set the flag.
         if(start_engine==true)
             start_engine = false;
-        bool halt = false;
-        return halt;
+
+        return false; // don't halt
     } else {
-        bool halt = true;
-        return halt;
+        // notify the Observers (if any)
+        // (in our case, notify the MPD station that could want
+        // to dequeue and recast and schedule immediately a job)
+        notify();
+
+        return true;  // do halt!
     }
 
     // if simulation is too long, abort
     if(clocktime > Max_Time){
-        bool halt = true;
         fprintf(stderr, "Simulation took too much!\nAborted\n");
-        return halt;
+        return true;  // do halt!
     }
 }
 
@@ -130,4 +138,8 @@ void System::generate_event(Station* fr){
 
 void System::schedule(Event& ev){
     FEL.schedule(ev);
+}
+
+void System::dump(){
+    printf("blip\n");
 }

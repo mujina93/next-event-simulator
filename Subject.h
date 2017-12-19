@@ -15,6 +15,9 @@ public:
     set<Observer*> observers;
 
     void addObserver(Observer* O);
+    // the duty of a Subject is ONLY
+    // to notify() every time something important happens
+    // so that the Observer can update()
     void notify();
 };
 

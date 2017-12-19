@@ -2,6 +2,7 @@
 #include "DEBUG.h"
 
 #include "Station.h"
+#include "System.h"
 #include "rvgs.h"
 #include <vector>
 #include <map>
@@ -10,6 +11,7 @@
 #include <cstdio>
 #include <iostream>
 #include <string>
+#include "Observer.h"
 
 using std::cout;
 using std::vector;
@@ -34,13 +36,16 @@ Station* Station::selectWhere(){
         S.push_back(it->first);
         cumulativeF += it->second;
         F.push_back(cumulativeF);
+        ///DD(fprintf(stderr,"fr: %d, to: %d, p: %lf\n",this->index,it->first->index,cumulativeF));
     }
     // sample and choose a station. That will be your target.
     double u = selector.gen();  // uniform
     Station* chosen;
-    for(unsigned i=0; i<F.size(); i++){
-        if(u < F.at(i))
+    for(unsigned i=F.size(); i --> 0; ){
+        if(u < F.at(i)){
+            ///DD(fprintf(stderr,"fr: %d, u: %lf, p: %lf, at: %d\n",this->index,u,F.at(i),S.at(i)->index));
             chosen = S.at(i);
+        }
     }
     DD(fprintf(stderr,"(re)schedule job: from %d to %d\n",
         this->index, chosen->index));
@@ -80,10 +85,10 @@ ServerStation::~ServerStation(){
 void ServerStation::serve(Event& ev){
     // serve the event with a service time
     ev.permanence_time = generateTime();
+    ///DD(fprintf(stderr,"generated service time: %lf\n",ev.permanence_time));
 }
 
 Event ServerStation::processDeparture(Event& ev){
-    notify();
     // someone is leaving! update internal numbers
     N--;
     nout++;
@@ -109,7 +114,6 @@ Event ServerStation::processDeparture(Event& ev){
 }
 
 Event ServerStation::processArrival(Event& ev){
-    notify();
     // someone has arrived! update internal numbers
     N++;
     nin++;
@@ -149,7 +153,6 @@ double DelayStation::generateTime(){
 }
 
 Event DelayStation::processDeparture(Event& ev){
-    notify();
     // someone is leaving! update internal numbers
     N--;
     nout++;
@@ -160,7 +163,6 @@ Event DelayStation::processDeparture(Event& ev){
 }
 
 Event DelayStation::processArrival(Event& ev){
-    notify();
     // someone has arrived! update internal numbers
     N++;
     nin++;
@@ -184,38 +186,38 @@ MPD::MPD(int N, int index, int mpd) :
 }
 
 Event MPD::processDeparture(Event& ev){
-    notify();
     // someone is leaving! update internal numbers
     N--;
     nout++;
 
-    // you can dequeue and reroute a job
-    // (if there is any, and if there is empty space)
-    if(N>0 && populosity()<MultiProgrammingDegree){
-        Event dev = Q->dequeue();
-        DR("*****BEFORE: dequeue the event:");
-        DD(dev.dump());
-        // serve
-        serve(dev);
-        // reroute
-        reroute(dev);
-        DR("*****dequeued job rerouted as:");
-        DD(dev.dump());
-        return dev;
-    } else {
-        // else return nothing
-        return Event();
-    }
+    DR("***Simply processing a departure from MPD");
+    return Event();
+//    // you can dequeue and reroute a job
+//    // (if there is any, and if there is empty space)
+//    if(N>0 && populosity()<MultiProgrammingDegree){
+//        Event dev = Q->dequeue();
+//        DR("*****BEFORE: dequeue the event:");
+//        DD(dev.dump());
+//        // serve
+//        serve(dev);
+//        // reroute
+//        reroute(dev);
+//        DR("*****dequeued job rerouted as:");
+//        DD(dev.dump());
+//        return dev;
+//    } else {
+//        // else return nothing
+//        return Event();
+//    }
 }
 
 Event MPD::processArrival(Event& ev){
-    notify();
     // someone has arrived! update internal numbers
     N++;
     nin++;
 
     // if the part of the system under control has space, recast immediately
-    if(populosity() < MultiProgrammingDegree){
+    if(N == 1 && populosity() < MultiProgrammingDegree){
         serve(ev);
         reroute(ev);
 
@@ -231,6 +233,26 @@ Event MPD::processArrival(Event& ev){
     }
 }
 
+void MPD::update(){
+    DR("update");
+    DD(fprintf(stderr,"%d\n",Q->length()));
+    // if there is someone in the MPD queue => dequeue and send it
+    if(Q->length()>0 && populosity()<MultiProgrammingDegree){
+        Event dev = Q->dequeue();
+        serve(dev);
+        reroute(dev);
+
+        // here we force from the Observer (MPD)
+        // the Subject (system) to do something, as effect of
+        // update(): to schedule the dequeued job
+        System* system = static_cast<System*>(watched);
+        system->schedule(dev);
+
+        DR("***INSTANT: job dequeued and scheduled by MPD as:");
+        DD(dev.dump());
+    }
+}
+
 int MPD::populosity(){
     typedef std::set<Station*>::iterator ssi;
     int sum = 0;
@@ -241,14 +263,14 @@ int MPD::populosity(){
     return sum;
 }
 
-void MPD::watch(Station* S){
-    Observer::watch(static_cast<Subject*>(S));
-    underControl.insert(S);
+void MPD::watch(System* Sys){
+    DR("observer: started watching system...");
+    Observer::watch(static_cast<Subject*>(Sys));
 }
 
-void MPD::update(){
-    /// TODO
-    int i = populosity();
+void MPD::addUnderControl(Station* S){
+    DR("observer: station added under control");
+    underControl.insert(S);
 }
 
 // --- SliceStation (CPU) ---
@@ -257,7 +279,6 @@ SliceStation::SliceStation(int N, int index, RNG::type ST, double* params, doubl
 }
 
 Event SliceStation::processDeparture(Event& ev){
-    notify();
     // someone is leaving! update internal numbers
     N--;
     nout++;
@@ -301,7 +322,6 @@ Event SliceStation::processDeparture(Event& ev){
 }
 
 Event SliceStation::processArrival(Event& ev){
-    notify();
     // someone has arrived! update internal numbers
     N++;
     nin++;

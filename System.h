@@ -7,11 +7,12 @@
 #include <string>
 #include "ListManager.h"
 #include "GlobalTime.h"
+#include "Subject.h"
 
 using std::vector;
 using std::string;
 
-class System{
+class System : public Subject{
 private:
     bool engine();
 public:
@@ -30,6 +31,7 @@ public:
     void simulate();
     void generate_event(Station* fr);
     void schedule(Event& ev);   // wrapper for Dll.schedule()
+    void dump();
 };
 
 #endif // SYSTEM_H

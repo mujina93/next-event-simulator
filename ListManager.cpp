@@ -199,6 +199,11 @@ Event Queue::dequeue(){
     return ev;
 }
 
+int Queue::length(){
+    return last - first;
+}
+
+// --- NodeManager ---
 void NodeManager::link(Node* Lnode, Node* Rnode){
     Rnode->left = Lnode;
     Lnode->right = Rnode;

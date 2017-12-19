@@ -8,4 +8,6 @@
 void Observer::watch(Subject* S){
     // register S so that when S notify(), the observer update()
     S->addObserver(this);
+    // set S as something under control
+    watched = S;
 }

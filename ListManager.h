@@ -34,6 +34,7 @@ public:
     Node* dequeueN();
     Event dequeue();
     void dump();
+    int length();
 };
 
 class NodeManager{
