@@ -8,6 +8,7 @@
 #include "System.h"
 #include <map>
 #include <vector>
+#include "WalkStatBall.h"
 
 #include "GlobalTime.h" // extern declaration of global time
 double clocktime = 0;        // actual definitio of global time
@@ -56,7 +57,7 @@ System* dummy(){
 
     // build and return the system object
     // the Future Event List is created inside the System
-    System* mysys = new System(stations, 100000);
+    System* mysys = new System(stations, 100000, 10);
     return mysys;
 }
 
@@ -66,10 +67,10 @@ System* initialize(){
     double* params = new double[1];
     // staz 0 - initialized with 20 clients inside
     params[0] = 5000.0;
-    Station* delay = new DelayStation(4, 0, RNG::EXP, params);
+    Station* delay = new DelayStation(20, 0, RNG::EXP, params);
     stations.push_back(delay);
     // staz 1 - reserve, MPD=10
-    Station* reserve = new MPD(0, 1, 1);
+    Station* reserve = new MPD(0, 1, 10);
     stations.push_back(reserve);
     // staz 2 - swapin
     params[0] = 210;  // mu
@@ -80,8 +81,7 @@ System* initialize(){
     params[0] = 0.8;    // alpha
     params[1] = 15;     // mu1
     params[2] = 75;     // mu2
-    /// CHANGE SLICING
-    Station* CPU = new SliceStation(0, 3, RNG::HYPEXP, params, 20); ///CHANGE
+    Station* CPU = new SliceStation(0, 3, RNG::HYPEXP, params, 3);
     stations.push_back(CPU);
     // staz 4 - IO
     params = new double[1]; params[0] = 40;
@@ -105,9 +105,8 @@ System* initialize(){
     swapin->setRoutes(routes);
     // from CPU (3)
     routes.clear();
-//    routes[IO1] = 0.65; routes[IO2] = 0.25;
-//    routes[delay] = 0.1*0.4; routes[reserve] = 0.1*0.6;
-    routes[delay] = 0.5; routes[reserve] = 0.5; /// CHANGE
+    routes[IO1] = 0.65; routes[IO2] = 0.25;
+    routes[delay] = 0.1*0.4; routes[reserve] = 0.1*0.6;
     CPU->setRoutes(routes);
     // from IO1 (4)
     routes.clear(); routes[CPU] = 1;
@@ -118,7 +117,7 @@ System* initialize(){
 
     // build and return the system object
     // the Future Event List is created inside the System
-    System* mysys = new System(stations, 100000);
+    System* mysys = new System(stations, 100000, 50);
 
     // add system for MPD to watch
     MPD* MPDreserve = static_cast<MPD*>(reserve); //(MPD pointer needed for polymorphism)
@@ -127,6 +126,17 @@ System* initialize(){
     MPDreserve->addUnderControl(CPU);
     MPDreserve->addUnderControl(IO1);
     MPDreserve->addUnderControl(IO2);
+
+    // WalkStatBalls that watch the system and compute walk times
+    // (in our case: Response time...
+    WalkStatBall* ResponseTimeStatBall = new WalkStatBall();
+    ResponseTimeStatBall->watchFrom(delay);
+    ResponseTimeStatBall->watchTo(delay);
+    // ...and Active time)
+    WalkStatBall* ActiveTimeStatBall = new WalkStatBall();
+    ActiveTimeStatBall->watchFrom(reserve);
+    ActiveTimeStatBall->watchTo(delay);
+    ActiveTimeStatBall->watchTo(reserve);
 
     delete params;
     return mysys;

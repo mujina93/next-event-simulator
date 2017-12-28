@@ -6,7 +6,7 @@
 StatBall::StatBall() : sum(0), sumSq(0), Size(0) {
 }
 
-void StatBall::update(double new_y, double new_x){
+void StatBall::updateStat(double new_y, double new_x){
     sum = sum + new_y*new_x;  // the product by new_x is here for the cases in which X is non discrete and new_x is != 1
     sumSq = sumSq + new_y*new_y*new_x; // the product by new_x is here for the cases in which X is non discrete and new_x is != 1
     Size = Size + new_x;

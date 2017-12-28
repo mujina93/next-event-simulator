@@ -2,6 +2,7 @@
 // Subject-Observer design pattern
 // Implementation of Subject class, to be inherited from as an interface
 
+#include "DEBUG.h"
 #include "Subject.h"
 #include <set>
 

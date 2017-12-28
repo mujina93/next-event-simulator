@@ -17,8 +17,6 @@ class System;
 
 class Station{
 public:
-    enum processOutcome {RECAST, ENQUEUED};
-
     Station(int N, int index);
     int N;      // number clients inside
     int nin;    // number arrived clients
@@ -26,14 +24,16 @@ public:
     int index;  // station's unique id
     map<Station*, double> routes; // stations where you can go and q values
     RNG selector;   // RNG which samples uniforms to decide where to route from the station
+    RNG* RandEngine; // RNG that generates random (service) times typical for this station
 
-    virtual double generateTime() = 0;
+    virtual double generateTime() = 0;              // this station's way of generating a random time (usually service time)
     virtual Event processDeparture(Event& ev) = 0; // do things when a job goes away
     virtual Event processArrival(Event& ev) = 0;   // do things when a new job arrives
-    Station* selectWhere();
+    Station* selectWhere();                         // select a station where to go from here
     void setRoutes(map<Station*, double> a_routes); // add neighbour list to this station
-    void reroute(Event& ev);
-    void dump();
+    void reroute(Event& ev);                        // set the given event from here to another station
+    void dump();                                    // prints description
+    bool isExp();                                   // true if this station has an exponential engine
 };
 
 class ServerStation : public Station{
@@ -41,7 +41,6 @@ public:
     ServerStation(int N, int index, RNG::type ST, double* params);
     ~ServerStation();
 
-    RNG* RandEngine;
     Queue* Q;
     int streamIndex;
 
@@ -83,8 +82,6 @@ class DelayStation : public Station{
 public:
     DelayStation(int N, int index, RNG::type ST, double* params);
     ~DelayStation();
-
-    RNG* RandEngine;
 
     double generateTime() override;
     Event processDeparture(Event& ev) override;

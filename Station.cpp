@@ -70,6 +70,14 @@ void Station::dump(){
     printf("    departures:     %d\n", nout);
 }
 
+bool Station::isExp(){
+    if(RandEngine->typ == RNG::EXP){
+        return true;
+    } else {
+        return false;
+    }
+}
+
 // --- server stations ---
 ServerStation::ServerStation(int N, int index, RNG::type ST, double* params) :
     Station(N,index) {
@@ -192,23 +200,6 @@ Event MPD::processDeparture(Event& ev){
 
     DR("***Simply processing a departure from MPD");
     return Event();
-//    // you can dequeue and reroute a job
-//    // (if there is any, and if there is empty space)
-//    if(N>0 && populosity()<MultiProgrammingDegree){
-//        Event dev = Q->dequeue();
-//        DR("*****BEFORE: dequeue the event:");
-//        DD(dev.dump());
-//        // serve
-//        serve(dev);
-//        // reroute
-//        reroute(dev);
-//        DR("*****dequeued job rerouted as:");
-//        DD(dev.dump());
-//        return dev;
-//    } else {
-//        // else return nothing
-//        return Event();
-//    }
 }
 
 Event MPD::processArrival(Event& ev){
@@ -234,8 +225,7 @@ Event MPD::processArrival(Event& ev){
 }
 
 void MPD::update(){
-    DR("update");
-    DD(fprintf(stderr,"%d\n",Q->length()));
+    DER("Length of queue at MPD reserve: %d\n",Q->length());
     // if there is someone in the MPD queue => dequeue and send it
     if(Q->length()>0 && populosity()<MultiProgrammingDegree){
         Event dev = Q->dequeue();
@@ -259,7 +249,7 @@ int MPD::populosity(){
     for (ssi it = underControl.begin(); it != underControl.end(); ++it){
         sum += (*it)->N;
     }
-    DD(fprintf(stderr,"Populosity in active system: %d\n",sum));
+    //DD(fprintf(stderr,"Populosity in active system: %d\n",sum));
     return sum;
 }
 

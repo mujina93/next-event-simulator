@@ -1,4 +1,6 @@
 
+// Global time variable. #include this in a file that wants to use it
+
 #ifndef GLOBALTIME_H
 #define GLOBALTIME_H
 

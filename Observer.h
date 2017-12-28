@@ -11,10 +11,10 @@ class Observer{
 public:
     Subject* watched; // this observer can only watch one Subject!
 
-    // the duty of an Observer is to start to watch() a subject at
-    // the beginning.
+    // the duty of an Observer is
+    // 1) to start to watch() a subject at the beginning
     void watch(Subject* S);
-    // and to implement update()
+    // 2) and to implement update()
     virtual void update() = 0; // do things when notified
 };
 
