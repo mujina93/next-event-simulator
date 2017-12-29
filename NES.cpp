@@ -8,7 +8,7 @@
 #include "System.h"
 #include <map>
 #include <vector>
-#include "WalkStatBall.h"
+#include "WalkStat.h"
 
 #include "GlobalTime.h" // extern declaration of global time
 double clocktime = 0;        // actual definitio of global time
@@ -21,7 +21,8 @@ System* dummy();
 
 int main(){
     System* sys = initialize();
-    sys->simulate();
+    //            max_time min_cycles quantile level
+    sys->simulate(10000000,     20,      1.96,   0.05);
     delete sys;
     return 0;
 }
@@ -57,7 +58,7 @@ System* dummy(){
 
     // build and return the system object
     // the Future Event List is created inside the System
-    System* mysys = new System(stations, 100000, 10);
+    System* mysys = new System(stations);
     return mysys;
 }
 
@@ -117,7 +118,7 @@ System* initialize(){
 
     // build and return the system object
     // the Future Event List is created inside the System
-    System* mysys = new System(stations, 100000, 50);
+    System* mysys = new System(stations);
 
     // add system for MPD to watch
     MPD* MPDreserve = static_cast<MPD*>(reserve); //(MPD pointer needed for polymorphism)
@@ -129,14 +130,20 @@ System* initialize(){
 
     // WalkStatBalls that watch the system and compute walk times
     // (in our case: Response time...
-    WalkStatBall* ResponseTimeStatBall = new WalkStatBall();
+    WalkStat* ResponseTimeStatBall = new WalkStat();
+    ResponseTimeStatBall->watchSystem(mysys);
     ResponseTimeStatBall->watchFrom(delay);
     ResponseTimeStatBall->watchTo(delay);
     // ...and Active time)
-    WalkStatBall* ActiveTimeStatBall = new WalkStatBall();
+    WalkStat* ActiveTimeStatBall = new WalkStat();
+    ActiveTimeStatBall->watchSystem(mysys);
     ActiveTimeStatBall->watchFrom(reserve);
     ActiveTimeStatBall->watchTo(delay);
     ActiveTimeStatBall->watchTo(reserve);
+
+    // add them as confidence givers for the system
+    mysys->addConfidenceGiver(ResponseTimeStatBall);
+    mysys->addConfidenceGiver(ActiveTimeStatBall);
 
     delete params;
     return mysys;

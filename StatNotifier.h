@@ -3,16 +3,16 @@
 #define STATNOTIFIER_H
 
 #include <set>
-#include "WalkStatBall.h"
+#include "WalkStat.h"
 #include "Events.h"
 
 using std::set;
 
 class StatNotifier{
 public:
-    set<WalkStatBall*> StatObservers;
+    set<WalkStat*> StatObservers;
 
-    void addStatObserver(WalkStatBall* O);
+    void addStatObserver(WalkStat* O);
     // the duty of a Subject/Notifier is ONLY
     // to notify() every time something important happens
     // so that the Observer can update()

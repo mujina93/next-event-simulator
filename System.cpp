@@ -11,16 +11,18 @@
 #include "Station.h"
 #include <typeinfo>
 #include <algorithm>
+#include <set>
 
 using std::vector;
 using std::string;
 using std::to_string;
+using std::set;
 
-System::System(vector<Station*> a_stations, double MaxTime, int MaxCycles) :
+System::System(vector<Station*> a_stations) :
     initial_state(), MarkovStations(),
     stations(a_stations), FEL(), reg(0),
-    Max_Time(MaxTime), job_number(0), first_event(false),
-    Max_Cycles(MaxCycles){
+    Max_Time(0), job_number(0), first_event(false),
+    Min_Cycles(0), _quantile(0), _level(0){
     DR("Creating the system ---");
     // bootstrap: generate the first events for all stations which have clients
     typedef vector<Station*>::iterator vsi;
@@ -74,9 +76,9 @@ bool System::engine(){
     // notify WalkStatBalls
     notifyEvent(pop_ev);
 
-    // if you hit enough cycles, stop
-    if(hitRegeneration(pop_ev) && reg==Max_Cycles){
-        DER("reached %d regeneration cycles\nEND OF SIMULATION",Max_Cycles);
+    // if you have enough confidence, stop
+    if(hitRegeneration(pop_ev) && reachedConfidence() && reg > Min_Cycles){
+        DER("reached confidence.\nEND OF SIMULATION");
         return true;  // do halt!
     }
 
@@ -143,7 +145,12 @@ bool System::hitRegeneration(Event& ev){
     return hitReg;
 }
 
-void System::simulate(){
+void System::simulate(double MaxTime, int MinCycles, double quantile, double level){
+    Min_Cycles = MinCycles;
+    Max_Time = MaxTime;
+    _quantile = quantile;
+    _level = level;
+
     bool halt = false;
     while(!halt){
         halt = engine();
@@ -175,8 +182,21 @@ void System::generate_event(Station* fr){
     DD(new_ev.dump());
 }
 
+bool System::reachedConfidence(){
+    bool answer = true;
+    typedef set<WalkStat*>::iterator swi;
+    for(swi it=confidenceGivers.begin(); it!=confidenceGivers.end(); ++it){
+        answer = answer && (*it)->reachedConfidence(_quantile, _level);
+    }
+    return answer;
+}
+
 void System::schedule(Event& ev){
     FEL.schedule(ev);
+}
+
+void System::addConfidenceGiver(WalkStat* ws){
+    confidenceGivers.insert(ws);
 }
 
 void System::dump(){
