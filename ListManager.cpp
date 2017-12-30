@@ -200,7 +200,7 @@ Event Queue::dequeue(){
 }
 
 int Queue::length(){
-    return last - first;
+    return ((last - first)>=0) ? (last - first) : (MaxLength + last - first);
 }
 
 // --- NodeManager ---
