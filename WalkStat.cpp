@@ -7,9 +7,12 @@
 #include "Stat.h"
 #include <cmath>
 #include "StatNotifier.h"
+#include <string>
 
-WalkStat::WalkStat() :
-    froms(), tos(), inside(), totalWalkTimes(0), firstTime(0){
+WalkStat::WalkStat(string name) :
+    froms(), tos(), inside(),
+    totalWalkTimes(0), walkCompletionCount(0),
+    _name(name){
     A = new StatBall();
     nu = new StatBall();
     SAV = new StatBall();
@@ -23,7 +26,7 @@ WalkStat::~WalkStat(){
 
 void WalkStat::reset(){
     totalWalkTimes = 0;
-    firstTime = clocktime;
+    walkCompletionCount = 0;
 }
 
 void WalkStat::watchFrom(Station* S){
@@ -44,20 +47,22 @@ void WalkStat::noticeEvent(Event& ev){
         // register the entering time
         inside[&ev] = clocktime;
 
-        DER("@@ job in at %lf\n",inside[&ev]);
+        DER("@%s) job %s in %d at %lf\n",_name.c_str(), ev.name.c_str(), ev.from->index, inside[&ev]);
 
         return;
     }
     // a job is going out from the area of interest
-    if(tos.find(ev.to) != tos.end()){
+    if(tos.find(ev.to) != tos.end() && inside.find(&ev) != inside.end()){
         // walk time (time elapsed from enter to exit)
         double walk_time = clocktime - inside[&ev];
         // pops out the event
         inside.erase(&ev);
         // adds the new walk time to the total
         totalWalkTimes += walk_time;
+        // increase counter of walk completions
+        walkCompletionCount++;
 
-        DER("@@ job out at %lf. TotalWalkTime = %lf\n",clocktime, totalWalkTimes);
+        DER("@%s) job %s out of %d at %lf. TotalWalkTime = %lf, completions = %1.0lf\n",_name.c_str(), ev.name.c_str(), ev.to->index, clocktime, totalWalkTimes, walkCompletionCount);
 
         return;
     }
@@ -65,13 +70,13 @@ void WalkStat::noticeEvent(Event& ev){
     return;
 }
 
-void WalkStat::update(){
+void WalkStat::update(){ // called upon by notifyRegeneration()
     A->updateStat(totalWalkTimes, 1);
-    nu->updateStat(clocktime - firstTime, 1);
-    SAV->updateStat(totalWalkTimes*(clocktime-firstTime),1);
+    nu->updateStat(walkCompletionCount, 1);
+    SAV->updateStat(totalWalkTimes * walkCompletionCount,1);
     reset();
 
-    DER("@@ regeneration hit. Updating WalkStat.\n");
+    DER("@%s) regeneration hit. Updating WalkStat.\n",_name.c_str());
 }
 
 double WalkStat::confidenceInterval(double quantile){
@@ -91,7 +96,7 @@ double WalkStat::confidenceInterval(double quantile){
     double Delta = sqrt(s2_Z/p) / nu_hat;
     // interval width
     double Interval = 2 * quantile * Delta;
-    DER("interval %lf rhat %lf\n", Interval, r_hat);
+    DER("@%s) nu_hat %lf avgA %lf interval %lf rhat %lf\n", _name.c_str(), nu_hat, A->digest(StatBall::AVG), Interval, r_hat);
     return Interval;
 }
 
@@ -99,6 +104,13 @@ bool WalkStat::reachedConfidence(double quantile, double level){
     double Interval = confidenceInterval(quantile);
     double nu_hat = nu->digest(StatBall::AVG);
     double r_hat = (nu_hat!=0) ? (A->digest(StatBall::AVG) / nu_hat) : (0);
-    DER("confidence? %lf <? %lf\n",Interval,level*r_hat);
+    DER("@%s) confidence? %lf <? %lf\n",_name.c_str(), Interval,level*r_hat);
     return ( Interval < level*r_hat);
+}
+
+void WalkStat::dump(double quantile, double level){
+    double Interval = confidenceInterval(quantile);
+    double nu_hat = nu->digest(StatBall::AVG);
+    double r_hat = (nu_hat!=0) ? (A->digest(StatBall::AVG) / nu_hat) : (0);
+    fprintf(stdout,"confidence? %lf <? %lf\n",Interval,level*r_hat);
 }

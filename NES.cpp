@@ -21,9 +21,23 @@ System* approximate();
 System* dummy();
 
 int main(){
+    // test run
+    System* test_sys = initialize();
+    test_sys->setRegenerationTesting(true);
+    //                 max_time
+    test_sys->simulate(1000000);
+
+    // real run
+    // reset time
+    clocktime = 0;
     System* sys = initialize();
-    //            max_time min_cycles quantile level
-    sys->simulate(1000000,     20,      1.96,   0.1);
+    // picking the regeneration state from the test simulation above
+    sys->setRegenerationState(test_sys->getRegenerationState());
+    // delete test simulation
+    delete test_sys;
+    // run
+    //            max_time   min_reg_points quantile level agglomeration
+    sys->simulate(1000000000,     10,         1.96,   0.1,      30);
     delete sys;
     return 0;
 }
@@ -131,12 +145,12 @@ System* initialize(){
 
     // WalkStatBalls that watch the system and compute walk times
     // (in our case: Response time...
-    WalkStat* ResponseTimeStatBall = new WalkStat();
+    WalkStat* ResponseTimeStatBall = new WalkStat("rsp");
     ResponseTimeStatBall->watchSystem(mysys);
     ResponseTimeStatBall->watchFrom(delay);
     ResponseTimeStatBall->watchTo(delay);
     // ...and Active time)
-    WalkStat* ActiveTimeStatBall = new WalkStat();
+    WalkStat* ActiveTimeStatBall = new WalkStat("act");
     ActiveTimeStatBall->watchSystem(mysys);
     ActiveTimeStatBall->watchFrom(reserve);
     ActiveTimeStatBall->watchTo(delay);
@@ -207,12 +221,12 @@ System* approximate(){
 
     // WalkStatBalls that watch the system and compute walk times
     // (in our case: Response time...
-    WalkStat* ResponseTimeStatBall = new WalkStat();
+    WalkStat* ResponseTimeStatBall = new WalkStat("rsp");
     ResponseTimeStatBall->watchSystem(mysys);
     ResponseTimeStatBall->watchFrom(delay);
     ResponseTimeStatBall->watchTo(delay);
     // ...and Active time)
-    WalkStat* ActiveTimeStatBall = new WalkStat();
+    WalkStat* ActiveTimeStatBall = new WalkStat("act");
     ActiveTimeStatBall->watchSystem(mysys);
     ActiveTimeStatBall->watchFrom(swapin);
     ActiveTimeStatBall->watchTo(delay);

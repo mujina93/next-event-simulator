@@ -12,17 +12,25 @@
 #include <typeinfo>
 #include <algorithm>
 #include <set>
+#include <map>
+#include <utility>
 
 using std::vector;
 using std::string;
 using std::to_string;
 using std::set;
+using std::map;
+using std::cout;
+using std::endl;
+using std::pair;
+using std::sort;
 
 System::System(vector<Station*> a_stations) :
-    initial_state(), MarkovStations(),
+    initial_state(), MarkovStations(), _agglomeration(0), _agglomeration_count(0),
     stations(a_stations), FEL(), reg(0),
     Max_Time(0), job_number(0), first_event(false),
-    Min_Cycles(0), _quantile(0), _level(0){
+    Min_Cycles(0), _quantile(0), _level(0),
+    regeneration_testing(false){
     DR("Creating the system ---");
     // bootstrap: generate the first events for all stations which have clients
     typedef vector<Station*>::iterator vsi;
@@ -70,16 +78,24 @@ bool System::engine(){
     Event pop_ev = FEL.pop();
 
     // update clock
-    double oldtime = clocktime;
+    //double oldtime = clocktime;
     clocktime = pop_ev.leaving_at;
 
     // notify WalkStatBalls
-    notifyEvent(pop_ev);
+    if(regeneration_testing==false){
+        notifyEvent(pop_ev);
+    }
 
-    // if you have enough confidence, stop
-    if(hitRegeneration(pop_ev) && reachedConfidence() && reg > Min_Cycles){
-        DER("reached confidence.\nEND OF SIMULATION");
-        return true;  // do halt!
+    // if it is a test run, run until Max_Time
+    bool hit_reg = hitRegeneration(pop_ev);
+    if(regeneration_testing==true){
+        // do nothing
+    } else { // if it is a true run
+        // if you have enough confidence, stop
+        if(hit_reg && reachedConfidence() && reg > Min_Cycles){
+            DER("reached confidence.\nEND OF SIMULATION\n");
+            return true;  // do halt!
+        }
     }
 
     // process event
@@ -125,35 +141,110 @@ bool System::engine(){
 
 bool System::hitRegeneration(Event& ev){
     bool hitReg = false;
-    // everything back to initial state. New event from then
-    if(get_state()==initial_state){
-        DR("Hit regeneration (returned to initial state)");
-        hitReg = true;
-    }
-    // a valid regeneration point is an arrival to a Markov station (one with NegExp service times)
-    else if(std::find(MarkovStations.begin(),MarkovStations.end(),ev.to)!=MarkovStations.end()){
+    // in case of test run, try all regeneration points
+    if(regeneration_testing==true){
+        // a regeneration point is an arrival to a Markov station (one with NegExp service times)
+        if(std::find(MarkovStations.begin(),MarkovStations.end(),ev.to)!=MarkovStations.end()){
         // MarkovStations contains the station where ev is heading
         DR("Hit regeneration (arrival to Markov station)");
         hitReg = true;
+        }
+    } else {
+    // otherwise, this is a true run, and you must use a precise arrival when there is a precise state
+        if(ev.to->index==regeneration_state.second->index && get_state() == regeneration_state.first){
+            DER("Hit regeneration! At time %lf\n",clocktime);
+            _agglomeration_count++;
+            if(_agglomeration_count==_agglomeration-1){
+                // you hit _agglomeration regeneration cycles!
+                // count one big cycle!
+                hitReg = true;
+                // reset counter
+                _agglomeration_count = 0;
+            }
+        }
     }
+
     // if you hit regeneration, reg++ and notify WalkStatBalls
     if(hitReg == true){
         reg++;
-        notifyRegeneration();
+        // if this is a preliminar test run, save the system states at regeneration points
+        if(regeneration_testing==true){
+            // saves the system state and the station when ev is arriving
+            pair<vector<int>, Station*> element(get_state(), ev.to);
+            states[element] += 1;
+        } else {
+        // if this is a true run, notify WalkStatBalls for statistics
+            notifyRegeneration();
+        }
     }
     // else
     return hitReg;
 }
 
-void System::simulate(double MaxTime, int MinCycles, double quantile, double level){
+void System::simulate(double MaxTime, int MinCycles, double quantile, double level, int agglomeration_number){
+    // simulation parameters
     Min_Cycles = MinCycles;
     Max_Time = MaxTime;
     _quantile = quantile;
     _level = level;
+    _agglomeration = agglomeration_number;
 
+    // simulate
     bool halt = false;
     while(!halt){
         halt = engine();
+    }
+
+    // if this is a simulation run, print the count for all states that occurred during regeneration points
+    if(regeneration_testing==true){
+        cout << "SIMULATION TEST RUN. CHECKING OCCURRED STATES AT REGENERATION POINTS\n";
+        #if DEBUG==1
+        cout << "Stations:\n";
+        for(vector<Station*>::iterator vsi = stations.begin(); vsi!=stations.end(); ++vsi){
+            cout << (*vsi)->index << " ";
+        }
+        cout << "\n";
+        cout << "State | arrival station : count\n";
+        #endif
+        // transform map into vector of pairs, so that you can easily sort the elements by value (map->second)
+        vector< pair< pair<vector<int>,Station*> , unsigned int > > pairs;
+        for(auto itr = states.begin(); itr!=states.end(); ++itr){
+            pairs.push_back(*itr);
+        }
+        // sort the map (decreasing)
+        sort(pairs.begin(), pairs.end(),
+            [=](pair<pair<vector<int>,Station*>,unsigned int>& a, pair<pair<vector<int>,Station*>,unsigned int>& b){
+                return a.second > b.second;
+            }
+        );
+        #if DEBUG==1
+        // print out state, arrival stations, count
+        vector< pair < pair<vector<int>,Station*> , unsigned int > >::iterator vpi; // iterator over pairs
+        vector<int>::iterator vit;
+        for(vpi = pairs.begin(); vpi!=pairs.end(); ++vpi){
+            // print state (vector)
+            for(vit = (*vpi).first.first.begin(); vit!=(*vpi).first.first.end(); ++vit){
+                cout << (*vit) << " ";
+            }
+            cout << "| ";
+            // print arrival station (index)
+            cout << (*vpi).first.second->index << " : ";
+            // print count (how many times that vector occurred)
+            cout << (*vpi).second << endl;
+        }
+        #endif
+        // saving most frequent regeneration state
+        regeneration_state = pairs[0].first;
+        cout << "Saving the most frequent state: " << endl;
+        for(vector<int>::iterator vii = regeneration_state.first.begin(); vii!=regeneration_state.first.end(); ++vii){
+            cout << *vii << " ";
+        }
+        cout << "| " << regeneration_state.second->index << endl;
+    } else {
+        // true simulation ended. Print results
+        for(set<WalkStat*>::iterator swi = confidenceGivers.begin(); swi!=confidenceGivers.end(); ++swi){
+            (*swi)->dump(_quantile, _level);
+        }
     }
 }
 
@@ -217,4 +308,16 @@ void System::dump(){
         }
     }
     printf("////END SYSTEM////\n");
+}
+
+void System::setRegenerationTesting(bool val){
+    regeneration_testing = val;
+}
+
+void System::setRegenerationState(pair<vector<int>,Station*> vec){
+    regeneration_state = vec;
+}
+
+pair<vector<int>,Station*> System::getRegenerationState(){
+    return regeneration_state;
 }
