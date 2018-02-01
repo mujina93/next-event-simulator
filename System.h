@@ -12,12 +12,16 @@
 #include <set>
 #include <map>
 #include <utility>
+#include "Matrix.h"
+#include <iostream>
 
 using std::vector;
 using std::string;
 using std::set;
 using std::map;
 using std::pair;
+using std::cerr;
+using std::cout;
 
 class System : public Subject, public StatNotifier{
 private:
@@ -27,6 +31,7 @@ private:
     set<WalkStat*> confidenceGivers;    // WalkStat objects that can compute confidence intervals
     int _agglomeration;                 // how many regeneration do you want to agglomerate together
     int _agglomeration_count;           // counter for agglomerating cycles
+    bool _hit_first_reg;                // hit first regeneration -> after this the true simulation starts
 public:
     System(vector<Station*> a_stations);
 
@@ -38,15 +43,15 @@ public:
     int job_number;     // id for jobs/clients' names
     bool first_event;   // false until you create the first event ever
     int Min_Cycles;  // max number of regeneration cycles
-    double _quantile; // ...below...
-    double _level;   // variables used to compute confidence interval and to stop simulation
+    double _confidenceIntervalProbability; // how much probability should the confidence interval(s) cover
+    double _confidenceIntervalPrecision;   // how small should the confidence interval be with respect to the value of the estimate
     bool regeneration_testing; // true if you want to make a test run of the system and you want to study the frequency of states
     map< pair<vector<int>,Station*> , unsigned int > states; // map of system states at regeneration points, arrival Markov stations, and relative count of these occurrences
     pair< vector<int>, Station* > regeneration_state; // most frequent 'system state + arrival station' occurring at regeneration points
 
     Station* operator[](int i);
     bool hitRegeneration(Event& ev); // check for regeneration point
-    void simulate(double MaxTime=100000, int MinCycles=10, double quantile=1.96, double level=0.1, int agglomeration_number=1);
+    void simulate(double MaxTime=100000, int MinCycles=10, double confidenceIntervalProbability=0.90, double precision=0.10, int agglomeration_number=1);
     void generate_event(Station* fr);
     void schedule(Event& ev);   // wrapper for Dll.schedule()
     void dump();
@@ -56,7 +61,44 @@ public:
     void setRegenerationTesting(bool val); // sets to true or false the regeneration testing run
     void setRegenerationState(pair<vector<int>,Station*> vec); // sets manually the regeneration state
     pair<vector<int>,Station*> getRegenerationState();
+    template<int _Stations>
+    Matrix<double,_Stations,_Stations> getRoutingMatrix(); // returns a Matrix<double,n,n> Q, with appropriate n, known at runtime
+    int getNumberOfStations();  // how many stations in the system?
 };
+
+// convert neighbour list to adjacency matrix (Q)
+template<int _Stations>
+Matrix<double,_Stations,_Stations> System::getRoutingMatrix(){
+    const int n = _Stations;
+    double** Q = new double*[n];
+    map<Station*, double> i_th_route;
+    // assign position to stations for fast lookup (below)
+    map<Station*,unsigned int> posiz;
+    for(unsigned int i=0; i<n; i++){
+        // assign the int (position) to a Station*
+        posiz[stations[i]] = i;
+    }
+
+    // generate routing matrix Q
+    for(int i=0; i<n; i++){
+        // fills i-th row of Q matrix
+        Q[i] = new double[n];
+        // initialize to 0 Q entries
+        for(int j=0; j<n; j++){
+            Q[i][j] = 0;
+        }
+        // insert non-zero elements where there is a link
+        i_th_route = stations[i]->routes;
+        for(map<Station*,double>::iterator mit=i_th_route.begin();
+            mit!=i_th_route.end(); ++mit){
+            Q[i][posiz[(*mit).first]] = (*mit).second;
+        }
+    }
+
+    // make a Matrix and return it
+    Matrix<double,n,n> Qmatrix(Q);
+    return Qmatrix;
+}
 
 #endif // SYSTEM_H
 

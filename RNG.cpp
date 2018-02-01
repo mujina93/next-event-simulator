@@ -45,5 +45,27 @@ double RNG::gen(){
         return -1;
         break;
     }
+}
 
+double RNG::getTypicalTime(){
+    switch (typ)
+    {
+    case EXP:
+        return params[0];
+        break;
+    case HYPEXP:
+        return params[0]*params[1] + (1-params[0])*params[2];
+        break;
+    case INST:
+        return 0;
+        break;
+    case UNI:
+        return 0.5;
+        break;
+    default:
+        cout << "Something went wrong with RNG ";
+        cout << streamIndex << " " << " of type: " << typ << "\n";
+        return -1;
+        break;
+    }
 }

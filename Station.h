@@ -17,6 +17,8 @@ class System;
 
 class Station{
 public:
+    enum StationType { D, LI }; // delay or load independent. Default: LI. Delay is: D.
+
     Station(int N, int index);
     int N;      // number clients inside
     int nin;    // number arrived clients
@@ -25,6 +27,7 @@ public:
     map<Station*, double> routes; // stations where you can go and q values
     RNG selector;   // RNG which samples uniforms to decide where to route from the station
     RNG* RandEngine; // RNG that generates random (service) times typical for this station
+    StationType MVAtype;
 
     virtual double generateTime() = 0;              // this station's way of generating a random time (usually service time)
     virtual Event processDeparture(Event& ev) = 0; // do things when a job goes away
@@ -34,6 +37,8 @@ public:
     void reroute(Event& ev);                        // set the given event from here to another station
     void dump();                                    // prints description
     bool isExp();                                   // true if this station has an exponential engine
+    StationType getType();                          // type for MVA analysis
+    double getTypicalTime();                        // gets mean time from RNG
 };
 
 class ServerStation : public Station{
@@ -86,7 +91,6 @@ public:
     double generateTime() override;
     Event processDeparture(Event& ev) override;
     Event processArrival(Event& ev) override;
-    double pushforward();
 };
 
 

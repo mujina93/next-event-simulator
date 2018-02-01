@@ -14,6 +14,7 @@
 #include <set>
 #include <map>
 #include <utility>
+#include "Matrix.h"
 
 using std::vector;
 using std::string;
@@ -26,10 +27,11 @@ using std::pair;
 using std::sort;
 
 System::System(vector<Station*> a_stations) :
-    initial_state(), MarkovStations(), _agglomeration(0), _agglomeration_count(0),
+    initial_state(), MarkovStations(), _agglomeration(0), _agglomeration_count(0), _hit_first_reg(false),
     stations(a_stations), FEL(), reg(0),
     Max_Time(0), job_number(0), first_event(false),
-    Min_Cycles(0), _quantile(0), _level(0),
+    Min_Cycles(0), _confidenceIntervalProbability(0),
+    _confidenceIntervalPrecision(0),
     regeneration_testing(false){
     DR("Creating the system ---");
     // bootstrap: generate the first events for all stations which have clients
@@ -82,19 +84,29 @@ bool System::engine(){
     clocktime = pop_ev.leaving_at;
 
     // notify WalkStatBalls
-    if(regeneration_testing==false){
+    // (WalkStatBalls call notifyEvent() to consider if the job is
+    // entering or going out from the zone of interest. If it is
+    // going out, the elapsed time (time spent by job inside the
+    // zone of interest) is registered and added to the StatBalls)
+    if(regeneration_testing==false && _hit_first_reg==true){
         notifyEvent(pop_ev);
     }
 
-    // if it is a test run, run until Max_Time
+    // did you hit a regeneration point?
     bool hit_reg = hitRegeneration(pop_ev);
-    if(regeneration_testing==true){
-        // do nothing
-    } else { // if it is a true run
-        // if you have enough confidence, stop
-        if(hit_reg && reachedConfidence() && reg > Min_Cycles){
-            DER("reached confidence.\nEND OF SIMULATION\n");
-            return true;  // do halt!
+    // if this is the first time, start the real simulation
+    // (only valid for true runs, not for test runs)
+    if(regeneration_testing==false){
+        if(hit_reg == true && _hit_first_reg==false){
+            _hit_first_reg = true;
+        }
+        // check for end of simulation (only for true runs)
+        if(_hit_first_reg==true){ // if this is a true run (and if the first regeneration point was reached)
+            // check for end of simulation (must have: regeneration point, reached confidence, and enough cycles)
+            if(hit_reg && reachedConfidence() && reg > Min_Cycles){
+                DER("reached confidence.\nEND OF SIMULATION\n");
+                return true;  // do halt!
+            }
         }
     }
 
@@ -109,9 +121,7 @@ bool System::engine(){
     Event dequeued = StazFrom->processDeparture(pop_ev);
     if( !dequeued.isNull() ){
         schedule(dequeued);
-    } else {
-        // processDeparture returned no useful event. Nothing to do
-    }
+    } // else, processDeparture returned no useful event. Nothing to do
 
     // the job arrives to StazTo. StazTo processes now the event
     // it can serve and recast it, or it can enqueue it.
@@ -121,9 +131,7 @@ bool System::engine(){
     if( !new_ev.isNull() ){
         // A new event was cast. Insert into FEL
         schedule(pop_ev);
-    } else {
-        // pop_ev was enqueued. Nothing to do.
-    }
+    } //else, pop_ev was enqueued. Nothing to do.
 
     // notify the Observers (if any)
     // (in our case, notify the MPD station that could want
@@ -132,8 +140,12 @@ bool System::engine(){
 
     // if simulation is too long, abort
     if(clocktime > Max_Time){
-        fprintf(stderr, "Simulation took too much!\nAborted\n");
-        return true;  // do halt!
+        if(regeneration_testing==false){
+            fprintf(stderr, "Simulation took too much!\nAborted\n");
+        } else {
+            fprintf(stderr, "End of test run. Information about regeneration points was collected.\n");
+        }
+        return true; // halt! stop the simulation
     } else {
         return false; // don't halt!
     }
@@ -141,20 +153,21 @@ bool System::engine(){
 
 bool System::hitRegeneration(Event& ev){
     bool hitReg = false;
-    // in case of test run, try all regeneration points
+    // in case of test run, consider all regeneration points
     if(regeneration_testing==true){
         // a regeneration point is an arrival to a Markov station (one with NegExp service times)
         if(std::find(MarkovStations.begin(),MarkovStations.end(),ev.to)!=MarkovStations.end()){
         // MarkovStations contains the station where ev is heading
-        DR("Hit regeneration (arrival to Markov station)");
         hitReg = true;
         }
     } else {
-    // otherwise, this is a true run, and you must use a precise arrival when there is a precise state
+    // in a true run, only a particular state is considered as the regeneration state.
+    // this function returns true if THAT PARTICULAR STATE IS HIT, AND, ONLY EVERY
+    // '_agglomeration' CYCLES.
         if(ev.to->index==regeneration_state.second->index && get_state() == regeneration_state.first){
-            DER("Hit regeneration! At time %lf\n",clocktime);
             _agglomeration_count++;
             if(_agglomeration_count==_agglomeration-1){
+                DES("Hit regeneration! At time %lf\n",clocktime);
                 // you hit _agglomeration regeneration cycles!
                 // count one big cycle!
                 hitReg = true;
@@ -164,16 +177,18 @@ bool System::hitRegeneration(Event& ev){
         }
     }
 
-    // if you hit regeneration, reg++ and notify WalkStatBalls
+    // if you hit regeneration...
     if(hitReg == true){
-        reg++;
+        reg++;  // increase counter that counts how many cycles you had
+
         // if this is a preliminar test run, save the system states at regeneration points
         if(regeneration_testing==true){
             // saves the system state and the station when ev is arriving
             pair<vector<int>, Station*> element(get_state(), ev.to);
             states[element] += 1;
-        } else {
-        // if this is a true run, notify WalkStatBalls for statistics
+        }
+        // if this is a true run, notify WalkStatBalls for computing statistics
+        else {
             notifyRegeneration();
         }
     }
@@ -181,12 +196,12 @@ bool System::hitRegeneration(Event& ev){
     return hitReg;
 }
 
-void System::simulate(double MaxTime, int MinCycles, double quantile, double level, int agglomeration_number){
+void System::simulate(double MaxTime, int MinCycles, double confidenceIntervalProbability, double precision, int agglomeration_number){
     // simulation parameters
     Min_Cycles = MinCycles;
     Max_Time = MaxTime;
-    _quantile = quantile;
-    _level = level;
+    _confidenceIntervalProbability = confidenceIntervalProbability;
+    _confidenceIntervalPrecision = precision;
     _agglomeration = agglomeration_number;
 
     // simulate
@@ -243,7 +258,7 @@ void System::simulate(double MaxTime, int MinCycles, double quantile, double lev
     } else {
         // true simulation ended. Print results
         for(set<WalkStat*>::iterator swi = confidenceGivers.begin(); swi!=confidenceGivers.end(); ++swi){
-            (*swi)->dump(_quantile, _level);
+            (*swi)->dump();
         }
     }
 }
@@ -277,7 +292,7 @@ bool System::reachedConfidence(){
     bool answer = true;
     typedef set<WalkStat*>::iterator swi;
     for(swi it=confidenceGivers.begin(); it!=confidenceGivers.end(); ++it){
-        answer = answer && (*it)->reachedConfidence(_quantile, _level);
+        answer = answer && (*it)->reachedConfidence(_confidenceIntervalProbability,_confidenceIntervalPrecision);
     }
     return answer;
 }
@@ -314,10 +329,33 @@ void System::setRegenerationTesting(bool val){
     regeneration_testing = val;
 }
 
-void System::setRegenerationState(pair<vector<int>,Station*> vec){
-    regeneration_state = vec;
+void System::setRegenerationState(pair<vector<int>,Station*> state){
+    regeneration_state = state;
 }
 
 pair<vector<int>,Station*> System::getRegenerationState(){
     return regeneration_state;
 }
+
+int System::getNumberOfStations(){
+    return stations.size();
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,3 +1,4 @@
+4/
 8/
 bak/
 *.o
@@ -6,3 +7,4 @@ log
 res*
 *test
 test*
+*.png

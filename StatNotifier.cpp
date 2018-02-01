@@ -11,6 +11,7 @@ void StatNotifier::addStatObserver(WalkStat* O){
 
 void StatNotifier::notifyEvent(Event& ev){
     //DER("@@ notifying event...\n");
+
     // notifies the StatObservers: let them noticeEvent()
     typedef std::set<WalkStat*>::iterator soi;
     for(soi it=StatObservers.begin(); it!=StatObservers.end(); ++it){
@@ -20,6 +21,7 @@ void StatNotifier::notifyEvent(Event& ev){
 
 void StatNotifier::notifyRegeneration(){
     //DER("@@ notifying regeneration!\n");
+
     // notifies the StatObservers: let them update()
     typedef std::set<WalkStat*>::iterator soi;
     for(soi it=StatObservers.begin(); it!=StatObservers.end(); ++it){

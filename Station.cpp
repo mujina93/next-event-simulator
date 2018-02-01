@@ -14,12 +14,14 @@
 #include "Observer.h"
 
 using std::cout;
+using std::cerr;
 using std::vector;
 using std::to_string;
 
 // --- station ----
 Station::Station(int N, int index) :
-    N(N), nin(N), nout(0), index(index), selector(RNG::UNI,nullptr){
+    N(N), nin(N), nout(0), index(index), selector(RNG::UNI,nullptr),
+    MVAtype(Station::LI){
 }
 
 void Station::setRoutes(map<Station*, double> a_routes){
@@ -76,6 +78,14 @@ bool Station::isExp(){
     } else {
         return false;
     }
+}
+
+Station::StationType Station::getType(){
+    return MVAtype;
+}
+
+double Station::getTypicalTime(){
+    return RandEngine->getTypicalTime();
 }
 
 // --- server stations ---
@@ -150,6 +160,8 @@ DelayStation::DelayStation(int N, int index, RNG::type ST, double* params) :
     // initialize the internal random engine
     // (which will sample times for the clients to go away from the station)
     RandEngine = new RNG(ST, params);
+    // override default MVAtype 'LI'
+    MVAtype = Station::D;
 }
 
 DelayStation::~DelayStation(){
