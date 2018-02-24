@@ -91,7 +91,6 @@ bool System::engine(){
     }
     // did you hit a regeneration point?
     bool hit_reg = hitRegeneration(pop_ev);
-    DR("after regenerationhit");
     // if this is the first time, start the real simulation
     // (only valid for true runs, not for test runs)
     if(regeneration_testing==false){
@@ -107,7 +106,6 @@ bool System::engine(){
             }
         }
     }
-    DR("after regeneration check");
 
     // process event
     DR("Processing the event");
@@ -160,15 +158,12 @@ bool System::hitRegeneration(Event& ev){
         hitReg = true;
         }
     } else {
-    DR("entering else branch");
     // in a true run, only a particular state is considered as the regeneration state.
     // this function returns true if THAT PARTICULAR STATE IS HIT, AND, ONLY EVERY
     // '_agglomeration' CYCLES.
         if(ev.to->index==regeneration_state.second->index && get_state() == regeneration_state.first){
-            DR("entering first if");
             _agglomeration_count++;
             if(_agglomeration_count==_agglomeration-1){
-                DR("entering second if");
                 DES("Hit regeneration! At time %lf\n",clocktime);
                 // you hit _agglomeration regeneration cycles!
                 // count one big cycle!
@@ -176,29 +171,23 @@ bool System::hitRegeneration(Event& ev){
                 // reset counter
                 _agglomeration_count = 0;
             }
-            DR("exit second if");
         }
     }
-    DR("after checking regeneration");
     // if you hit regeneration...
     if(hitReg == true){
-        DR("entering first hit if");
         reg++;  // increase counter that counts how many cycles you had
 
         // if this is a preliminar test run, save the system states at regeneration points
         if(regeneration_testing==true){
-            DR("entering second hit if");
             // saves the system state and the station when ev is arriving
             pair<vector<int>, Station*> element(get_state(), ev.to);
             states[element] += 1;
         }
         // if this is a true run, notify WalkStatBalls for computing statistics
         else {
-            DR("entering second hit else");
             notifyRegeneration();
         }
     }
-    DR("after hit regeneration");
     // else
     return hitReg;
 }
