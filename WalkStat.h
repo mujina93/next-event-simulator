@@ -9,10 +9,12 @@
 #include <map>
 #include <string>
 #include "Estimator.h"
+#include <utility>
 
 using std::set;
 using std::map;
 using std::string;
+using std::pair;
 
 class Station;
 class StatNotifier;
@@ -22,9 +24,11 @@ public:
     WalkStat(string name);
     ~WalkStat();
 
+    Station* starting_station; // considered as turning point for cycles in the system
     set<Station*> froms;    // entering points for the area of interest
     set<Station*> tos;      // exit points for the area of interest
     map<string,double> inside;  // (job's name,entering time) pairs, to register a job which is walking into the area of interest and the entering time
+    map<string,double> temporary_active_time; // stores partial values of time passed in active part of system by a job
     double totalWalkTimes;  // total of the walk times (every time a job completes a walk in the area of interest, add its time to this)
     double walkCompletionCount;  // counts the job that have completed a walk during the regeneration period
     StatBall* A;            // A_j = total walk time during a regeneration cycle
@@ -36,6 +40,7 @@ public:
 
     // the duty of a WalkStat (= Observer) is to watchSystem() a system
     // then, the system will notify() the WalkStat, which will notice() and update()
+    void addStartingPoint(Station* S);
     void watchSystem(StatNotifier* sys);
     void watchFrom(Station* S); // add S to 'froms'. When a job leaves from this station, watch it
     void watchTo(Station* S); // add S to 'tos'. When a job arrives at this station, register the time it has walked until now
@@ -46,6 +51,7 @@ public:
     bool reachedConfidence(double probability, double precision); // is Interval < precision*r_hat ?
     void dump();
     double validate(double theoretical_value);
+    pair<double,double> ExtremesOfInterval();
 };
 
 #endif // WALKSTAT_H

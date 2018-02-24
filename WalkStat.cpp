@@ -10,10 +10,12 @@
 #include <string>
 #include <iostream>
 
+using std::pair;
 using std::cout;
 
 WalkStat::WalkStat(string name) :
     froms(), tos(), inside(),
+    temporary_active_time(),
     totalWalkTimes(0), walkCompletionCount(0),
     _name(name){
     A = new StatBall();
@@ -30,6 +32,10 @@ WalkStat::~WalkStat(){
 void WalkStat::reset(){
     totalWalkTimes = 0;
     walkCompletionCount = 0;
+}
+
+void WalkStat::addStartingPoint(Station *S){
+    starting_station = S;
 }
 
 void WalkStat::watchFrom(Station* S){
@@ -58,11 +64,27 @@ void WalkStat::noticeEvent(Event& ev){ // called upon by notifyEvent()
     // a job is going out from the area of interest
     if(tos.find(ev.to) != tos.end() && inside.find(ev.name) != inside.end()){
         // walk time (time elapsed from enter to exit)
-        double walk_time = clocktime - inside[ev.name];
-        // adds the new walk time to the total
-        totalWalkTimes += walk_time;
-        // increase counter of walk completions
-        walkCompletionCount++;
+        // stores time that the job has passed inside the active system up to now
+        // without returning to the delay station (staz. 0) in the meanwhile
+        if(temporary_active_time.count(ev.name) <= 0){
+            // if the key,value does not exist, create it
+            temporary_active_time[ev.name] = clocktime - inside[ev.name];
+        }else{
+            // else, add the value
+            temporary_active_time[ev.name] += clocktime - inside[ev.name];
+        }
+
+        // if the job has completed a cycle of the system (it has visited the delay station again)
+        // save its temporary_active_time by adding it to the totalWalkTimes (which will make up for
+        // an instance of the active time)
+        if(ev.to == starting_station){
+            // adds the new walk time to the total
+            totalWalkTimes += temporary_active_time[ev.name];
+            // increase counter of walk completions
+            walkCompletionCount++;
+            // resets partial time for the event
+            temporary_active_time[ev.name] = 0;
+        }
 
         //DES("@%s) Removing %p from system\n",_name.c_str(),&ev);
         DES("@%s) job %s out. From %d to %d at %lf. (Entered at: %lf). TotalWalkTime = %lf, completions = %1.0lf\n",_name.c_str(), ev.name.c_str(), ev.from->index, ev.to->index, clocktime, inside[ev.name], totalWalkTimes, walkCompletionCount);
@@ -130,4 +152,9 @@ void WalkStat::dump(){
     cout << "Statistics for: " << _name << "\n";
     fprintf(stdout, "r_hat: %lf, interval: %lf, covering probability: %lf, precision: %lf\n",
             r_hat, Interval, probability, _precision_on_estimate);
+}
+
+pair<double,double> WalkStat::ExtremesOfInterval(){
+    pair<double,double> min_max_confidence_interval(estimator.estimate - estimator.interval.value / 2, estimator.estimate + estimator.interval.value / 2);
+    return min_max_confidence_interval;
 }

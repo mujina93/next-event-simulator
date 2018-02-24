@@ -28,7 +28,7 @@ public:
     MVA(const Matrix<_Scalar,_Stations,_Stations>& routingMatrix,
         const vector<Station::StationType>& station_types,
         const vector<double>& service_or_delay_times);
-    MVA(System* sys);
+    MVA(System* sys, vector<int> active_stations = {});
 
     Matrix<_Scalar,_Stations,_Clients> avg_n;  //expected queue lengths
     Matrix<_Scalar,_Stations,_Clients> avg_w;  //expected waiting times
@@ -37,15 +37,18 @@ public:
     vector<_Scalar> S;     //service times for LI stations and delay times for D stations
     vector<_Scalar> V;              //visiting counts
     vector<_Scalar> R;              //response times as function of number of clients
+    vector<_Scalar> A;              // active times as function of number of clients
     Matrix<_Scalar,_Stations,_Stations> Q;      //routing matrix
     vector<Station::StationType> _station_types;//station types
-    int bottleneckStation;
+    int bottleneckStation;      // index of bottleneck stations
+    vector<int> _active_stations;    // indexes of stations that form the active part of the system
 
     void bottleneckAnalysis();
     void MVA_LI_D();         // always run after bottleneckAnalysis()
     void print_results();
     void plot_results();
     void plot_vector(vector<_Scalar> ydata, string ylabel="", string title="default", string curve="");
+    pair<_Scalar,_Scalar> getResponseTime_ActiveTime(int number_of_clients);
 };
 
 // build an MVA by giving in a squared routing matrix Q of the system
@@ -60,17 +63,17 @@ MVA<_Scalar,_Stations,_Clients>::MVA(
     for(int i=0; i<_Stations; i++){
         S.push_back(service_or_delay_times[i]);
         // initialize to 0
-        R.push_back(0);
         V.push_back(0);
     }
     for(int k=0; k<_Clients; k++){
         R.push_back(0);
+        A.push_back(0);
     }
 }
 
 // construct taking data from a System
 template<typename _Scalar, int _Stations, int _Clients>
-MVA<_Scalar,_Stations,_Clients>::MVA(System* sys){
+MVA<_Scalar,_Stations,_Clients>::MVA(System* sys, vector<int> active_stations){
     if(_Stations!=sys->getNumberOfStations()){
         throw std::runtime_error("wrong number of stations in MVA constructor (template parameter)");
     }
@@ -81,11 +84,14 @@ MVA<_Scalar,_Stations,_Clients>::MVA(System* sys){
         _station_types.push_back(sys->stations[i]->getType());
         S.push_back(sys->stations[i]->getTypicalTime());
         // initialize to 0
-        R.push_back(0);
         V.push_back(0);
     }
     for(int k=0; k<_Clients; k++){
         R.push_back(0);
+        A.push_back(0);
+    }
+    for(vector<int>::iterator it=active_stations.begin(); it!=active_stations.end(); ++it){
+        _active_stations.push_back(*it);
     }
 }
 
@@ -93,6 +99,17 @@ MVA<_Scalar,_Stations,_Clients>::MVA(System* sys){
 template<typename _Scalar, int _Stations, int _Clients>
 void MVA<_Scalar,_Stations,_Clients>::bottleneckAnalysis(){
     V = Q.leftPerron().to_Vector();
+    // NORMALIZE WITH RESPECT TO STATION 1 (SWAPIN)
+    /*
+    if(V[1]!=0){
+        _Scalar norm = V[1];
+        for(unsigned int i=0;i<V.size();i++){
+            V[i]/=norm;
+        }
+    } else {
+        cout << "V[1] != 0. Result is not normalized\n";
+    }
+    */
     vector<_Scalar> D;
     for(unsigned int i=0; i<V.size(); i++){
         if(_station_types[i]==Station::D){
@@ -120,6 +137,8 @@ void MVA<_Scalar,_Stations,_Clients>::bottleneckAnalysis(){
 // find all statistics
 template<typename _Scalar, int _Stations, int _Clients>
 void MVA<_Scalar,_Stations,_Clients>::MVA_LI_D(){
+    // normalization constant for computing active time
+    _Scalar norm = 1;//V[1];
     // computing statistics
     for(int k=0; k<_Clients; k++){      // k stands for k+1 clients
         for(int i=0; i<_Stations; i++){ // stations indexing starts from 0
@@ -138,7 +157,7 @@ void MVA<_Scalar,_Stations,_Clients>::MVA_LI_D(){
             X[i][k] = V[i]*X[0][k];
             if(_station_types[i] == Station::D){
                 avg_n[i][k] = S[i]*X[i][k];
-                U[i][k] = avg_n[i][k]/double(k);
+                U[i][k] = avg_n[i][k]/double(k+1);
             }else{
                 U[i][k] = S[i]*X[i][k];
                 avg_n[i][k] = U[i][k]*(1+avg_n[i][k-1]);
@@ -146,6 +165,11 @@ void MVA<_Scalar,_Stations,_Clients>::MVA_LI_D(){
         }
         //! ASSUMING DELAY STATION IS AT INDEX 0
         R[k]=double(k+1)/X[0][k] - S[0];
+
+        // active time (average time spent in active part of the system)
+        for(vector<int>::iterator it = _active_stations.begin(); it != _active_stations.end(); ++it){
+            A[k] += V[*it]/norm*avg_w[*it][k];
+        }
     }
 }
 
@@ -176,6 +200,10 @@ void MVA<_Scalar,_Stations,_Clients>::print_results(){
     cout << "R\n";
     Matrix<_Scalar,_Clients,1> mat_vecR(R);
     mat_vecR.transpose().dump();
+
+    cout << "Active time\n";
+    Matrix<_Scalar,_Clients,1> mat_vecA(A);
+    mat_vecA.transpose().dump();
 }
 
 // string curve can be an expression like "5" or "5*x - 10", any
@@ -209,7 +237,11 @@ void MVA<_Scalar,_Stations,_Clients>::plot_vector(vector<_Scalar> ydata, string 
 
 template<typename _Scalar, int _Stations, int _Clients>
 void MVA<_Scalar,_Stations,_Clients>::plot_results(){
+    // plot response time
     plot_vector(R,"R","response-time");
+    // plot active time
+    plot_vector(A, "A", "active-time");
+    // plot average n for each station
     vector<_Scalar> avg_n_VEC;
     std::ostringstream stringStream;
     for(int i=0; i<_Stations; i++){
@@ -220,6 +252,12 @@ void MVA<_Scalar,_Stations,_Clients>::plot_results(){
         stringStream.str("");
         stringStream.clear();
     }
+}
+
+template<typename _Scalar, int _Stations, int _Clients>
+pair<_Scalar,_Scalar> MVA<_Scalar,_Stations,_Clients>::getResponseTime_ActiveTime(int number_of_clients){
+    pair<_Scalar,_Scalar> results(R[number_of_clients-1], A[number_of_clients-1]);
+    return results;
 }
 
 #endif // MVA_H

@@ -28,7 +28,7 @@ private:
     bool engine();                      // simulate one step
     vector<int> initial_state;          // initial values of N for all stations
     vector<Station*> MarkovStations;    // vector of stations with Negative Exponential random engine
-    set<WalkStat*> confidenceGivers;    // WalkStat objects that can compute confidence intervals
+    map<string, WalkStat*> confidenceGivers;    // WalkStat objects that can compute confidence intervals
     int _agglomeration;                 // how many regeneration do you want to agglomerate together
     int _agglomeration_count;           // counter for agglomerating cycles
     bool _hit_first_reg;                // hit first regeneration -> after this the true simulation starts
@@ -64,6 +64,7 @@ public:
     template<int _Stations>
     Matrix<double,_Stations,_Stations> getRoutingMatrix(); // returns a Matrix<double,n,n> Q, with appropriate n, known at runtime
     int getNumberOfStations();  // how many stations in the system?
+    pair<double,double> getIntervalExtremesResults(string walkStatName); // returns the couple (r_hat - Interval/2, r_hat + Interval/2), after simulation was run
 };
 
 // convert neighbour list to adjacency matrix (Q)

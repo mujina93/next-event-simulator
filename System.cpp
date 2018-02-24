@@ -78,22 +78,20 @@ bool System::engine(){
 
     // pop event
     Event pop_ev = FEL.pop();
-
     // update clock
     //double oldtime = clocktime;
     clocktime = pop_ev.leaving_at;
-
-    // notify WalkStatBalls
-    // (WalkStatBalls call notifyEvent() to consider if the job is
+    // notify WalkStat
+    // (WalkStat objects will call noticeEvent() to consider if the job is
     // entering or going out from the zone of interest. If it is
     // going out, the elapsed time (time spent by job inside the
     // zone of interest) is registered and added to the StatBalls)
     if(regeneration_testing==false && _hit_first_reg==true){
         notifyEvent(pop_ev);
     }
-
     // did you hit a regeneration point?
     bool hit_reg = hitRegeneration(pop_ev);
+    DR("after regenerationhit");
     // if this is the first time, start the real simulation
     // (only valid for true runs, not for test runs)
     if(regeneration_testing==false){
@@ -109,6 +107,7 @@ bool System::engine(){
             }
         }
     }
+    DR("after regeneration check");
 
     // process event
     DR("Processing the event");
@@ -161,12 +160,15 @@ bool System::hitRegeneration(Event& ev){
         hitReg = true;
         }
     } else {
+    DR("entering else branch");
     // in a true run, only a particular state is considered as the regeneration state.
     // this function returns true if THAT PARTICULAR STATE IS HIT, AND, ONLY EVERY
     // '_agglomeration' CYCLES.
         if(ev.to->index==regeneration_state.second->index && get_state() == regeneration_state.first){
+            DR("entering first if");
             _agglomeration_count++;
             if(_agglomeration_count==_agglomeration-1){
+                DR("entering second if");
                 DES("Hit regeneration! At time %lf\n",clocktime);
                 // you hit _agglomeration regeneration cycles!
                 // count one big cycle!
@@ -174,24 +176,29 @@ bool System::hitRegeneration(Event& ev){
                 // reset counter
                 _agglomeration_count = 0;
             }
+            DR("exit second if");
         }
     }
-
+    DR("after checking regeneration");
     // if you hit regeneration...
     if(hitReg == true){
+        DR("entering first hit if");
         reg++;  // increase counter that counts how many cycles you had
 
         // if this is a preliminar test run, save the system states at regeneration points
         if(regeneration_testing==true){
+            DR("entering second hit if");
             // saves the system state and the station when ev is arriving
             pair<vector<int>, Station*> element(get_state(), ev.to);
             states[element] += 1;
         }
         // if this is a true run, notify WalkStatBalls for computing statistics
         else {
+            DR("entering second hit else");
             notifyRegeneration();
         }
     }
+    DR("after hit regeneration");
     // else
     return hitReg;
 }
@@ -204,12 +211,13 @@ void System::simulate(double MaxTime, int MinCycles, double confidenceIntervalPr
     _confidenceIntervalPrecision = precision;
     _agglomeration = agglomeration_number;
 
-    // simulate
+    // SIMULATE
     bool halt = false;
     while(!halt){
         halt = engine();
     }
 
+    // PRINT RESULTS
     // if this is a simulation run, print the count for all states that occurred during regeneration points
     if(regeneration_testing==true){
         cout << "SIMULATION TEST RUN. CHECKING OCCURRED STATES AT REGENERATION POINTS\n";
@@ -257,8 +265,8 @@ void System::simulate(double MaxTime, int MinCycles, double confidenceIntervalPr
         cout << "| " << regeneration_state.second->index << endl;
     } else {
         // true simulation ended. Print results
-        for(set<WalkStat*>::iterator swi = confidenceGivers.begin(); swi!=confidenceGivers.end(); ++swi){
-            (*swi)->dump();
+        for(map<string,WalkStat*>::iterator swi = confidenceGivers.begin(); swi!=confidenceGivers.end(); ++swi){
+            swi->second->dump();
         }
     }
 }
@@ -290,9 +298,9 @@ void System::generate_event(Station* fr){
 
 bool System::reachedConfidence(){
     bool answer = true;
-    typedef set<WalkStat*>::iterator swi;
+    typedef map<string,WalkStat*>::iterator swi;
     for(swi it=confidenceGivers.begin(); it!=confidenceGivers.end(); ++it){
-        answer = answer && (*it)->reachedConfidence(_confidenceIntervalProbability,_confidenceIntervalPrecision);
+        answer = answer && it->second->reachedConfidence(_confidenceIntervalProbability,_confidenceIntervalPrecision);
     }
     return answer;
 }
@@ -302,7 +310,8 @@ void System::schedule(Event& ev){
 }
 
 void System::addConfidenceGiver(WalkStat* ws){
-    confidenceGivers.insert(ws);
+    // save the walkstat using its short name as key
+    confidenceGivers[ws->_name] = ws;
 }
 
 void System::dump(){
@@ -341,7 +350,9 @@ int System::getNumberOfStations(){
     return stations.size();
 }
 
-
+pair<double,double> System::getIntervalExtremesResults(string walkStatName){
+    return confidenceGivers[walkStatName]->ExtremesOfInterval();
+}
 
 
 

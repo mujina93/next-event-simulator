@@ -1,0 +1,64 @@
+
+Breve descrizione delle classi:
+
+NES.cpp : main file, contiene il codice che crea i sistemi, esegue la MVA, esegue le simulazioni, e il codice per la validazione.
+
+DEBUG.h : header di debug. Se si cambia "#define DEBUG 0" in "#define DEBUG 1", e si ricompila il progetto, si attiveranno tutte le stampe di debug. L'output risultante sara' massivo (ordine dei GB).
+
+System : classe che rappresenta il sistema. Contiene le stazioni, la Future Event List, una mappa di oggetti WalkStat (confidenceGivers) che servono a calcolare i punti di rigenerazione e gli intervalli di confidenza, ha informazioni sui tipi di stazioni, stato di rigenerazione, parametri per le simulazioni, funzioni per simulare (simulate() per l'intera simulazione e engine() per il singolo step).
+
+Station : varie classi che rappresentano le stazioni ereditando da una classe padre. Le stazioni sono in grado di decidere dove re-inviare i job (rerouting). Ogni stazione usa 2 oggetti RNG (che generano randomicita') al suo interno: 1 per decidere in quale altra stazione inviare i job completati, 1 per fare sampling del service time. Ogni sotto-classe ha comportamenti specifici.
+Relazioni di ereditarieta':
+esempio    	  figlio	 padre
+delay		  DelayStation  <- Station
+IO1/2, swapin	  ServerStation <- Station
+CPU		  SliceStation  <- ServerStation
+reserve		  MPD	      	<- ServerStation
+
+RNG : classe che fa da generatore di istanze di variabili random. Ha un tipo e dei parametri interni che determinano quale variabile random generare. Al suo interno usa le funzioni di rvgs.h per generare le variabili. Per garantire che vengano usati stream diversi da oggetti diversi, lo stream per il generatore casuale di ogni oggetto viene inizializzato da un counter (variabile statica della classe RNG) che viene incrementato ad ogni istanza creata di RNG.
+
+rvgs : funzioni per fare sampling da variabili random
+
+rngs : libreria base per generazione di numeri casuali stream-based.
+
+WalkStat : classe associata al computo e alla statistica di una variabile legata al "cammino" (per questo "Walk"), come il Response Time o l'Active Time. Facendo uso del design pattern Subject-Observer, WalkStat e' un oggetto Observer, che viene notificato da un qualche Subject (il sistema o le singole stazioni) riguardo agli eventi di suo interesse. Ad ogni notifica aggiorna i valori interni delle sue variabili (fa uso degli oggetti StatBall per salvare i valori di A e nu). Questo e' l'oggetto capace di calcolare gli intervalli di confidenza e le stime finali dei valori calcolati con il metodo rigenerativo.
+
+StatNotifier : interfaccia per notificare dei WalkStat che fanno da observers (usata da System). Permette di chiamare:
+1) notifyEvent(), che costringe i WalkStat a usare noticeEvent() registrando valori e prendendo nota dello stato del sistema,
+2) notifyRegeneration(), che costringe i WalkStat a usare update() aggiornando le statistiche.
+
+Observer : interfaccia per un Observer (usata dalla classe MPD). Puo' fare update() quando viene notificato. In questo modo la stazione MPD puo' "liberare" jobs che stavano in coda non appena viene liberato del posto nella parte attiva del sistema.
+
+Subject : interfaccia per un Subject (usata da System). Puo' conservare una lista di Observers da notificare, e puo' chiamare notify() per notificare gli observers. Usata per notificare la stazione MPD quando un job entra/esce dalla parte attiva del sistema.
+
+NOTA: il design pattern subject-observer viene usato 2 volte (distinte) nel progetto!
+1) il soggetto e' il sistema (interfaccia: StatNotifier), e gli observers sono i WalkStat (interfaccia: WalkStat), che registrano le statistiche e calcolano i valori per i Response e Active time
+2) il soggetto e' sempre il sistema (interfaccia: Subject) e l'observer e' la stazione MPD (interfaccia: Observer).
+
+StatBall : (dentro Stat.h/Stat.cpp) classe che mantiene i valori parziali di qualche grandezza. Puo' usare updateStat() per un update on-the-fly, e digest() per calcolare alcune statistice (average, variance, etc.). Usato dai WalkStat per la gestione interna dei valori parziali di A, nu, e dei prodotti A*nu.
+
+Estimator : classe che contiene la coppia di valori: (stima puntuale, intervallo di confidenza). E' in grado di calcolare gli intervalli di confidenza direttamente dal quantile, e di dire se un certo intervallo di confidenza soddisfa il livello di precisione richiesto. Nel progetto viene usata solo una sottoclasse: StdNormEstimator, relativa ad una normale standard.
+
+Events : classe che rappresenta l'arrivo di un job da una stazione (from) ad un'altra (to) e la permanenza fino alla prossima dipartita.
+create_time = quando e' stato creato il job.
+arrived_at = istante in cui il job arriva alla stazione 'to'.
+permanence_time = tempo in cui il job permane nella stazione 'to'.
+leaving_at = istante in cui il job se ne andra' dalla stazione 'to'. (Sono le Station a settare questi parametri, con i metodi serve() e reroute().)
+
+GlobalTime.h : contiene il clock globale usato come tempo dalle simulazioni. Va settato a 0 prima di eseguire una simulazione.
+
+gnuplot-iostream.h : header per usare gnuplot da C++ (per fare i plot)
+
+ListManager : contiene implementazioni per doubly linked list (classe Dll) e queue (classe Queue). Dll usata per Future Event List (in System), e Queue usata per le code (nelle varie Stations).
+
+Matrix : classe templata che rappresenta le matrici. Implementa utilities come la risoluzione dei sistemi, e la ricerca del Perron vector (usata in MVA).
+
+MVA : contiene il codice per svolgere la mean value analysis
+
+
+
+
+
+
+
+
