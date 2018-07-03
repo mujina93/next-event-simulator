@@ -13,6 +13,7 @@ public:
     set<WalkStat*> StatObservers;
 
     void addStatObserver(WalkStat* O);
+    void unsubscribeFromAll();
     // the duty of a Subject/Notifier is ONLY
     // to notify() every time something important happens
     // so that the Observer can update()

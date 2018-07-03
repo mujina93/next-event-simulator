@@ -32,9 +32,11 @@ private:
     int _agglomeration;                 // how many regeneration do you want to agglomerate together
     int _agglomeration_count;           // counter for agglomerating cycles
     bool _hit_first_reg;                // hit first regeneration -> after this the true simulation starts
+    bool _completionBasedAgglomeration;  // true if you want to agglomerate based on a minimum number of completions. False if you want to agglomerate normally.
 public:
-    System(vector<Station*> a_stations);
+    System(vector<Station*> a_stations, map<string,Station*> a_named_stations);
 
+    map<string, Station*> named_stations;
     vector<Station*> stations;
     Dll FEL;
     int reg;            // regeneration cycles
@@ -50,8 +52,10 @@ public:
     pair< vector<int>, Station* > regeneration_state; // most frequent 'system state + arrival station' occurring at regeneration points
 
     Station* operator[](int i);
+    Station* operator[](string name);
+    void reset();
     bool hitRegeneration(Event& ev); // check for regeneration point
-    void simulate(double MaxTime=100000, int MinCycles=10, double confidenceIntervalProbability=0.90, double precision=0.10, int agglomeration_number=1);
+    void simulate(double MaxTime=100000, int MinCycles=10, double confidenceIntervalProbability=0.90, double precision=0.10, bool completionBasedAgglomeration=false, int agglomeration_number=1);
     void generate_event(Station* fr);
     void schedule(Event& ev);   // wrapper for Dll.schedule()
     void dump();

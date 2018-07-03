@@ -15,6 +15,7 @@
 #include <map>
 #include <utility>
 #include "Matrix.h"
+#include <climits>
 
 using std::vector;
 using std::string;
@@ -26,13 +27,18 @@ using std::endl;
 using std::pair;
 using std::sort;
 
-System::System(vector<Station*> a_stations) :
+System::System(vector<Station*> a_stations, map<string,Station*> a_named_stations) :
     initial_state(), MarkovStations(), _agglomeration(0), _agglomeration_count(0), _hit_first_reg(false),
-    stations(a_stations), FEL(), reg(0),
+    named_stations(a_named_stations), stations(a_stations), FEL(), reg(0),
     Max_Time(0), job_number(0), first_event(false),
     Min_Cycles(0), _confidenceIntervalProbability(0),
     _confidenceIntervalPrecision(0),
     regeneration_testing(false){
+
+    // global time set to 0
+    clocktime = 0;
+
+    // create system
     DR("Creating the system ---");
     // bootstrap: generate the first events for all stations which have clients
     typedef vector<Station*>::iterator vsi;
@@ -42,10 +48,12 @@ System::System(vector<Station*> a_stations) :
         for(int i=0; i<((*it)->N); i++){
             // initializing with the first events
             generate_event(*it);
-            // registering the initial state
-            // (could be useful when looking for regeneration points)
-            initial_state.push_back((*it)->N);
         }
+
+        // registering the initial state
+        // (could be useful when looking for regeneration points)
+        initial_state.push_back((*it)->N);
+
         // remember which stations have NegExp service times
         // (useful when looking for regeneration points)
         if((*it)->isExp()){
@@ -62,6 +70,48 @@ System::System(vector<Station*> a_stations) :
 
 Station* System::operator[](int i){
     return stations[i];
+}
+
+Station* System::operator[](string name){
+    return named_stations[name];
+}
+
+void System::reset(){
+    DR("Re-initializing the system ---");
+
+    // detach all confidence givers ( you have to manually re-assign new WalkStatBalls watching the system, after reset()! )
+    for(map<string,WalkStat*>::iterator mit = confidenceGivers.begin(); mit != confidenceGivers.end(); ++mit){
+        delete mit->second; // destroy dynamically allocated WalkStat
+    }
+    confidenceGivers.clear(); // clear map of confidenceGivers (the map becomes empty)
+    unsubscribeFromAll(); // clears the list of WalkStats to which it is subscribed (the StatObservers set from StatNotifier class becomes empty)
+
+    // re-initialize all values
+    _agglomeration_count = 0;
+    _hit_first_reg = false;
+    FEL.clear();
+    reg = 0;
+    job_number = 0;
+    first_event = false;
+
+    // global time set to 0
+    clocktime = 0;
+
+    // generate the first events for all stations which have clients
+    for(unsigned s=0; s < stations.size(); s++){
+        // reset clients in stations
+        stations[s]->N = initial_state[s];
+        stations[s]->nin = initial_state[s];
+        stations[s]->nout = 0;
+
+        DR("--- At station: ");
+        DD(stations[s]->dump());
+        for(int i=0; i<initial_state[s]; i++){
+            DR("initial state here: "+initial_state[s]);
+            // initializing with the first events
+            generate_event(stations[s]);
+        }
+    }
 }
 
 vector<int> System::get_state(){
@@ -86,7 +136,7 @@ bool System::engine(){
     // entering or going out from the zone of interest. If it is
     // going out, the elapsed time (time spent by job inside the
     // zone of interest) is registered and added to the StatBalls)
-    if(regeneration_testing==false && _hit_first_reg==true){
+    if(regeneration_testing==false){//} && _hit_first_reg==true){
         notifyEvent(pop_ev);
     }
     // did you hit a regeneration point?
@@ -94,17 +144,17 @@ bool System::engine(){
     // if this is the first time, start the real simulation
     // (only valid for true runs, not for test runs)
     if(regeneration_testing==false){
-        if(hit_reg == true && _hit_first_reg==false){
+        /*if(hit_reg == true && _hit_first_reg==false){
             _hit_first_reg = true;
-        }
+        }*/
         // check for end of simulation (only for true runs)
-        if(_hit_first_reg==true){ // if this is a true run (and if the first regeneration point was reached)
+        //if(_hit_first_reg==true){ // if this is a true run (and if the first regeneration point was reached)
             // check for end of simulation (must have: regeneration point, reached confidence, and enough cycles)
             if(hit_reg && reachedConfidence() && reg > Min_Cycles){
                 DER("reached confidence.\nEND OF SIMULATION\n");
                 return true;  // do halt!
             }
-        }
+        //}
     }
 
     // process event
@@ -158,19 +208,39 @@ bool System::hitRegeneration(Event& ev){
         hitReg = true;
         }
     } else {
-    // in a true run, only a particular state is considered as the regeneration state.
-    // this function returns true if THAT PARTICULAR STATE IS HIT, AND, ONLY EVERY
-    // '_agglomeration' CYCLES.
+    // true run
         if(ev.to->index==regeneration_state.second->index && get_state() == regeneration_state.first){
-            _agglomeration_count++;
-            if(_agglomeration_count==_agglomeration-1){
-                DES("Hit regeneration! At time %lf\n",clocktime);
-                // you hit _agglomeration regeneration cycles!
-                // count one big cycle!
-                hitReg = true;
-                // reset counter
-                _agglomeration_count = 0;
-            }
+                if (_completionBasedAgglomeration == false){
+                    // in a true run, only a particular state is considered as the regeneration state.
+                    // this function returns true if THAT PARTICULAR STATE IS HIT, AND, ONLY EVERY
+                    // '_agglomeration' CYCLES.
+                    _agglomeration_count++;
+                    if(_agglomeration_count==_agglomeration-1){
+                        DES("Hit regeneration! (fixed agglomeration) At time %lf\n",clocktime);
+                        // you hit _agglomeration regeneration cycles!
+                        // count one big cycle!
+                        hitReg = true;
+                        // reset counter
+                        _agglomeration_count = 0;
+                    }
+                } else {
+                    // otherwise, agglomerate based on checking if there were at least some number of completions
+                    // by each of the WalkStat (confidenceGivers)
+                    int minimumCompletions = INT_MAX;
+                    int wcc = 0;
+                    for (auto const& x : confidenceGivers) {
+                        wcc = x.second->getWalkCompletionCount();
+                        if (wcc < minimumCompletions){
+                            minimumCompletions = wcc;
+                        }
+                    }
+                    // if all of the confidenceGivers have enough completions for this round, end the regeneration cycle here
+                    if (wcc >= _agglomeration){
+                        DES("Hit regeneration! (completions-based agglomeration) At time %lf\n",clocktime);
+                        // count one big cycle!
+                        hitReg = true;
+                    }
+                }
         }
     }
     // if you hit regeneration...
@@ -192,13 +262,17 @@ bool System::hitRegeneration(Event& ev){
     return hitReg;
 }
 
-void System::simulate(double MaxTime, int MinCycles, double confidenceIntervalProbability, double precision, int agglomeration_number){
+void System::simulate(double MaxTime, int MinCycles, double confidenceIntervalProbability, double precision, bool completionBasedAgglomeration, int agglomeration_number){
+    // check statObservers are here
+    DER("Number of WalkStat observing: %d\n",int(StatObservers.size()));
+
     // simulation parameters
     Min_Cycles = MinCycles;
     Max_Time = MaxTime;
     _confidenceIntervalProbability = confidenceIntervalProbability;
     _confidenceIntervalPrecision = precision;
     _agglomeration = agglomeration_number;
+    _completionBasedAgglomeration = completionBasedAgglomeration;
 
     // SIMULATE
     bool halt = false;
@@ -300,7 +374,9 @@ void System::schedule(Event& ev){
 
 void System::addConfidenceGiver(WalkStat* ws){
     // save the walkstat using its short name as key
+    DER("Adding WalkStat: %s\n", (ws->_name).c_str());
     confidenceGivers[ws->_name] = ws;
+    DER("In confidenceGivers: %d elements\n", int(confidenceGivers.size()));
 }
 
 void System::dump(){

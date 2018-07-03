@@ -9,10 +9,9 @@
 #include <map>
 #include <vector>
 #include "WalkStat.h"
+#include "MVA.h"
 #include <iostream>
 #include <utility>
-#include <string>
-#include "DEBUG.h"
 
 #include "GlobalTime.h" // extern declaration of global time
 double clocktime = 0;   // actual definitio of global time
@@ -26,10 +25,8 @@ using std::pair;
 System* createSystem();
 System* approximateSystemNoMPD();
 System* dummy();
-void addWalkStatBall(System* sys, string name, Station* start, vector<Station*> froms, vector<Station*> tos);
 
 typedef System* (*builder)(void); // type that denotes a function that builds a system
-
 struct validation_interval_results {
     map<string, vector<pair<double,double>> > data;
 };
@@ -46,8 +43,21 @@ pair<double,double> validate(double theoretical_value, vector<pair<double,double
 
 int main(){
 
-    // store theoretical results from MVA
-    pair<double,double> Response_Active_Times(17593.78, 16617.36);
+    /// MVA analysis
+    System* approxSys = approximateSystemNoMPD();
+    vector<int> active_stations = {2,3,4};
+    //  precision   stations  max_clients
+    MVA< double,       5  ,        30  > mvaAnalyzer(approxSys,active_stations);
+    // MVA analysis
+    mvaAnalyzer.bottleneckAnalysis();
+    mvaAnalyzer.MVA_LI_D();
+    mvaAnalyzer.print_results();
+    mvaAnalyzer.plot_results();
+
+    // store theoretical results
+    pair<double,double> Response_Active_Times = mvaAnalyzer.getResponseTime_ActiveTime(20);
+    // cleanup
+    delete approxSys;
 
     /// test run
     System* test_sys = approximateSystemNoMPD();
@@ -56,7 +66,7 @@ int main(){
     test_sys->simulate(1000000);
 
     /// true runs
-    validation_interval_results Results = RunSimulations(4, approximateSystemNoMPD, test_sys, 1000000000, 10, 0.9, 0.1, true, 30);
+    validation_interval_results Results = RunSimulations(100, approximateSystemNoMPD, test_sys, 1000000000, 10, 0.9, 0.1, true, 40);
     // cleanup
     delete test_sys;
 
@@ -120,16 +130,10 @@ validation_interval_results RunSimulations(int number_of_runs,
     System* sys;
     for(int i=0; i<number_of_runs; i++){
         cout << "\nSimulation n. " << i+1 << "\n\n";
+        // global time to zero
+        clocktime = 0;
         // initialize system using some external function that builds the system
-        if (i==0){
-            sys = SystemBuilderFunction(); // create system for the first time
-        }
-        else {
-            sys->reset(); // re-initialize system
-        }
-        // add WalkStatBalls to watch the system
-        addWalkStatBall(sys, "rsp", sys->named_stations["delay"], {sys->named_stations["delay"]}, {sys->named_stations["delay"]});
-        addWalkStatBall(sys, "act", sys->named_stations["delay"], {sys->named_stations["swapin"]}, {sys->named_stations["delay"],sys->named_stations["swapin"]});
+        sys = SystemBuilderFunction();
         // set the preferred regeneration state by picking it from a test run
         sys->setRegenerationState(burn_in_system->getRegenerationState());
         // run with the given parameters
@@ -149,7 +153,6 @@ validation_interval_results RunSimulations(int number_of_runs,
     return Result;
 }
 
-/*
 // simple system
 System* dummy(){
     // create and initialize stations
@@ -196,9 +199,6 @@ System* dummy(){
 
     return mysys;
 }
-*/
-
-/*
 // true system
 System* createSystem(){
     // create and initialize stations
@@ -287,42 +287,34 @@ System* createSystem(){
     mysys->addConfidenceGiver(ActiveTimeStatBall);
 
     return mysys;
-} */
-
+}
 // approximated system
 System* approximateSystemNoMPD(){
     // create and initialize stations
-    map<string,Station*> named_stations;
     vector<Station*> stations;
-
     double* params = new double[1];
     // staz 0 - initialized with 20 clients inside
     params[0] = 5000.0;
     Station* delay = new DelayStation(20, 0, RNG::EXP, params);
     stations.push_back(delay);
-    named_stations["delay"] = delay;
     // staz 1 - reserve, MPD=10
     // NO MPD IN APPROXIMATED SYSTEM
     // staz 2 - swapin
     params = new double[1]; params[0] = 210;  // mu
     Station* swapin = new ServerStation(0, 2, RNG::EXP, params);
     stations.push_back(swapin);
-    named_stations["swapin"] = swapin;
     // staz 3 - CPU approximately exponential
     params = new double[3]; params[0] = 3;    // mu
     Station* CPU = new ServerStation(0, 3, RNG::EXP, params);
     stations.push_back(CPU);
-    named_stations["CPU"] = CPU;
     // staz 4 - IO
     params = new double[1]; params[0] = 40;
     Station* IO1 = new ServerStation(0, 4, RNG::EXP, params);
     stations.push_back(IO1);
-    named_stations["IO1"] = IO1;
     // staz 5 - IO
     params = new double[1]; params[0] = 180;
     Station* IO2 = new ServerStation(0, 5, RNG::EXP, params);
     stations.push_back(IO2);
-    named_stations["IO2"] = IO2;
 
     // glue stations together - set routes
     map<Station*,double> routes;
@@ -346,42 +338,26 @@ System* approximateSystemNoMPD(){
 
     // build and return the system object
     // the Future Event List is created inside the System
-    System* mysys = new System(stations, named_stations);
+    System* mysys = new System(stations);
+
+    // WalkStatBalls that watch the system and compute walk times
+    // (in our case: Response time...
+    WalkStat* ResponseTimeStatBall = new WalkStat("rsp");
+    ResponseTimeStatBall->addStartingPoint(delay);
+    ResponseTimeStatBall->watchSystem(mysys);
+    ResponseTimeStatBall->watchFrom(delay);
+    ResponseTimeStatBall->watchTo(delay);
+    // ...and Active time)
+    WalkStat* ActiveTimeStatBall = new WalkStat("act");
+    ActiveTimeStatBall->addStartingPoint(delay);
+    ActiveTimeStatBall->watchSystem(mysys);
+    ActiveTimeStatBall->watchFrom(swapin);
+    ActiveTimeStatBall->watchTo(delay);
+    ActiveTimeStatBall->watchTo(swapin);
+    //ActiveTimeStatBall->watchTo(reserve);//NO MPD HERE
+    // add them as confidence givers for the system
+    mysys->addConfidenceGiver(ResponseTimeStatBall);
+    mysys->addConfidenceGiver(ActiveTimeStatBall);
 
     return mysys;
-}
-
-void addWalkStatBall(System* sys, string name, Station* start, vector<Station*> froms, vector<Station*> tos){
-    // WalkStatBalls that watch the system and compute walk times
-    // (in our case: Response time or Active Time
-    WalkStat* Watcher = new WalkStat(name);
-    Watcher->addStartingPoint(start);
-    for (vector<Station*>::iterator it = froms.begin() ; it != froms.end(); ++it){
-        Watcher->watchFrom(*it);
-    }
-    for (vector<Station*>::iterator it = tos.begin() ; it != tos.end(); ++it){
-        Watcher->watchTo(*it);
-    }
-    Watcher->watchSystem(sys);
-
-    // add them as confidence givers for the system
-    sys->addConfidenceGiver(Watcher);
-    DR("ADDED WATCHER");
-
-//    WalkStat* ResponseTimeStatBall = new WalkStat("rsp");
-//    ResponseTimeStatBall->addStartingPoint(delay);
-//    ResponseTimeStatBall->watchSystem(sys);
-//    ResponseTimeStatBall->watchFrom(delay);
-//    ResponseTimeStatBall->watchTo(delay);
-//    // ...and Active time)
-//    WalkStat* ActiveTimeStatBall = new WalkStat("act");
-//    ActiveTimeStatBall->addStartingPoint(delay);
-//    ActiveTimeStatBall->watchSystem(sys);
-//    ActiveTimeStatBall->watchFrom(swapin);
-//    ActiveTimeStatBall->watchTo(delay);
-//    ActiveTimeStatBall->watchTo(swapin);
-//    //ActiveTimeStatBall->watchTo(reserve);//NO MPD HERE
-//    // add them as confidence givers for the system
-//    sys->addConfidenceGiver(ResponseTimeStatBall);
-//    sys->addConfidenceGiver(ActiveTimeStatBall);
 }

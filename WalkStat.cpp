@@ -12,6 +12,8 @@
 
 using std::pair;
 using std::cout;
+using std::cerr;
+using std::endl;
 
 WalkStat::WalkStat(string name) :
     froms(), tos(), inside(),
@@ -62,7 +64,7 @@ void WalkStat::noticeEvent(Event& ev){ // called upon by notifyEvent()
         return;
     }
     // a job is going out from the area of interest
-    if(tos.find(ev.to) != tos.end() && inside.find(ev.name) != inside.end()){
+    if(tos.count(ev.to) > 0 && inside.count(ev.name) > 0){
         // walk time (time elapsed from enter to exit)
         // stores time that the job has passed inside the active system up to now
         // without returning to the delay station (staz. 0) in the meanwhile
@@ -77,7 +79,8 @@ void WalkStat::noticeEvent(Event& ev){ // called upon by notifyEvent()
         // if the job has completed a cycle of the system (it has visited the delay station again)
         // save its temporary_active_time by adding it to the totalWalkTimes (which will make up for
         // an instance of the active time)
-        if(ev.to == starting_station){
+        ///cerr << ev.to->index << " " << starting_station->index << std::endl;
+        if(ev.to->index == starting_station->index){
             // adds the new walk time to the total
             totalWalkTimes += temporary_active_time[ev.name];
             // increase counter of walk completions
@@ -107,6 +110,10 @@ void WalkStat::update(){ // called upon by notifyRegeneration()
     DES("@%s) regeneration hit, at time: %lf. Updating. total walk times (A) = %lf, completions (nu) = %1.0lf, time*completions (SAV) = %lf\n",_name.c_str(),clocktime,A->sum,nu->sum,SAV->sum);
 }
 
+int WalkStat::getWalkCompletionCount(){
+    return walkCompletionCount;
+}
+
 double WalkStat::confidenceInterval(double probability){
     // r_hat
     double nu_hat = nu->digest(StatBall::AVG);
@@ -125,7 +132,7 @@ double WalkStat::confidenceInterval(double probability){
     // interval width
     double quantile = estimator.quantile2tailed(probability);
     double Interval = 2 * quantile * Delta;
-    DER("@%s) nu_hat %lf avgA %lf interval %lf rhat %lf\n", _name.c_str(), nu_hat, A->digest(StatBall::AVG), Interval, r_hat);
+    DES("@%s) nu_hat %lf avgA %lf interval %lf rhat %lf\n", _name.c_str(), nu_hat, A->digest(StatBall::AVG), Interval, r_hat);
 
     // save everything in the interval estimator object
     estimator.setEstimate(r_hat);
@@ -140,7 +147,7 @@ bool WalkStat::reachedConfidence(double probability, double precision){
     // the results are set in the object 'estimator'
     confidenceInterval(probability);
     _precision_on_estimate = precision;
-    DER("@%s) confidence? %lf <? %lf\n",_name.c_str(), estimator.interval.value,precision*estimator.estimate);
+    DES("@%s) confidence? %lf <? %lf\n",_name.c_str(), estimator.interval.value,precision*estimator.estimate);
     return estimator.satisfiesPrecision(precision);
 }
 

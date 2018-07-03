@@ -1,6 +1,7 @@
 
 #define DEBLIST 0
 
+#include "DEBUG.h"
 #include <cstdio>
 #include "ListManager.h"
 #include "Events.h"
@@ -25,6 +26,26 @@ Dll::~Dll(){
     return;
 }
 
+void Dll::clear(){
+    // clean doubly linked list
+    Node* probe = head;
+    if(probe!=nullptr){
+        while(probe != tail){
+            // go on one step
+            probe = probe->right;
+            // clean
+            delete probe->left;
+        }
+        // free tail
+        delete probe;
+    }
+
+    // re-initialize head and tail
+    head->right = nullptr;
+    head = nullptr;
+    tail = nullptr;
+}
+
 Node* Dll::popN(){
     // if list becomes empty, set tail to nullptr
     if(head->right==nullptr){
@@ -32,6 +53,8 @@ Node* Dll::popN(){
     }
     // return head and update head pointer
     Node* to_be_returned = head;
+
+
     head = head->right;
     return to_be_returned;
 }

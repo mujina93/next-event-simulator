@@ -9,9 +9,12 @@ class Dll{
 public:
     Dll();
     ~Dll();
+    Dll& operator=(Dll const& r) = delete;
+
     Node* head;
     Node* tail;
 
+    void clear();
     Node* popN();
     Event pop();
     void scheduleN(Node* nodep);

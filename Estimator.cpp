@@ -1,6 +1,6 @@
 
 #include "Estimator.h"
-#include <boost/math/distributions/normal.hpp>
+#include "rvms.h"
 
 ///--- Estimtor ---
 bool Estimator::satisfiesPrecision(double precision){
@@ -18,15 +18,13 @@ void Estimator::setEstimate(double value){
 
 ///--- StdNormEstimator ---
 double StdNormEstimator::quantile(double p){
-    boost::math::normal standard_normal(0.0, 1.0);
     // 'p' of distribution is below q
     // (e.g. p=0.95 means 95% of the distribution is below q)
-    return boost::math::quantile(standard_normal, p);
+    return idfNormal(0, 1, p);
 }
 
 double StdNormEstimator::quantile2tailed(double p){
-    boost::math::normal standard_normal(0.0, 1.0);
     // 'p' of distribution is between -q and q
     // (e.g. p=0.95 means 95% of the distribution is between -q and q)
-    return boost::math::quantile(standard_normal, 0.5 + p/2);
+    return idfNormal(0, 1, 0.5 + p/2);
 }

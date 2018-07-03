@@ -52,6 +52,7 @@ public:
     void dump();
     double validate(double theoretical_value);
     pair<double,double> ExtremesOfInterval();
+    int getWalkCompletionCount();
 };
 
 #endif // WALKSTAT_H

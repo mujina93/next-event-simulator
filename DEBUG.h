@@ -15,7 +15,7 @@
 #define DO(x)
 #endif
 
-#define DEBUG_STAT 0
+#define DEBUG_STAT 1
 #if DEBUG_STAT==1
 #define DES(x, ...) (fprintf(stderr, x , ##__VA_ARGS__))
 #else

@@ -9,6 +9,10 @@ void StatNotifier::addStatObserver(WalkStat* O){
     StatObservers.insert(O);
 }
 
+void StatNotifier::unsubscribeFromAll(){
+    StatObservers.clear();
+}
+
 void StatNotifier::notifyEvent(Event& ev){
     //DER("@@ notifying event...\n");
 
